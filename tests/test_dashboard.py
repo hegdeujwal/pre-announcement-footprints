@@ -3,13 +3,15 @@
 `UI-context.md` calls its rules binding, and several exist because breaking one
 would misrepresent the result rather than merely look untidy: pooling the
 scheduled split would let the easy half carry every number, showing plain
-accuracy would report 99.71% for a system that does nothing, and dropping the
+accuracy would report over 99% for a system that does nothing, and dropping the
 disclaimer would present a footprint as an accusation.
 
 So they are asserted here rather than trusted to review. These tests render
 the real app through Streamlit's own harness — if a screen raises, this fails.
 """
 from __future__ import annotations
+
+import re
 
 import pytest
 
@@ -124,10 +126,21 @@ def test_the_alert_budget_is_on_screen():
 
 
 def test_the_evaluation_screen_refuses_plain_accuracy():
-    """Rule 5. It must say so on screen, where an examiner looks for it."""
+    """Rule 5. It must say so on screen, where an examiner looks for it.
+
+    The always-quiet figure is asserted as a SHAPE, not as a literal. It was
+    pinned at "99.71%", which was the number on the day it was written and
+    afterwards matched neither frame: the validation base rate gives 99.54%
+    and the sealed test frame 99.68%. The screen now derives it from the table
+    it has actually loaded, so pinning any one value would fail whenever the
+    other file is on screen, and would need editing after every re-run — which
+    is how a test starts being updated to match the code instead of checking
+    it. What rule 5 actually requires is that the trap is quantified at all.
+    """
     body = _text(_run("Evaluation"))
     assert "plain accuracy is not reported" in body
-    assert "99.71%" in body, "the trap should be quantified, not just named"
+    assert re.search(r"\*\*99\.\d{2}%\*\*", body), (
+        "the trap should be quantified, not just named")
 
 
 def test_the_scheduled_split_is_visible_not_buried():

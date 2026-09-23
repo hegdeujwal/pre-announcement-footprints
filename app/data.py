@@ -300,6 +300,94 @@ def outcome_slice(df: pd.DataFrame) -> pd.Series:
 
 
 # --------------------------------------------------------------------------
+# figures the captions quote — DERIVED, never written down
+#
+# Each of these was once a hardcoded number in a caption on `screens.py`, true
+# on the day it was typed and wrong a fortnight later: the log grew from 2,033
+# alerts to several times that and every one of them drifted. A caption that
+# states a figure has to compute it, or it becomes the least trustworthy thing
+# on a screen whose whole argument is that its numbers are checkable.
+# --------------------------------------------------------------------------
+def strength_distribution(df: pd.DataFrame) -> dict:
+    """Where alerts actually sit relative to their own thresholds.
+
+    `ui._BANDS` was set from this distribution rather than from round numbers,
+    so the caption explaining the bands has to read it from the same place the
+    bands were chosen from.
+    """
+    if df.empty or "score" not in df or "threshold" not in df:
+        return {"median": None, "p90": None, "n": 0}
+    mult = (df["score"] / df["threshold"]).replace(
+        [float("inf"), float("-inf")], pd.NA).dropna()
+    if mult.empty:
+        return {"median": None, "p90": None, "n": 0}
+    return {"median": float(mult.median()),
+            "p90": float(mult.quantile(0.90)),
+            "n": int(len(mult))}
+
+
+#: Feature families a caption reports coverage for. A family is "present" on an
+#: alert when ANY of its columns carries a value, matching `screens._SLOTS`,
+#: which spends one reason slot on the first member it finds.
+_FEATURE_FAMILIES = {
+    "benchmark_relative": ("ret_rel_1h", "ret_rel_4h", "ret_rel_24h",
+                           "ret_rel_120h"),
+    "news": ("hours_since_news", "news_count_24h", "news_count_168h"),
+}
+
+
+def feature_coverage(df: pd.DataFrame) -> dict:
+    """How many alerts carry each feature family, out of the whole log.
+
+    Rule 1 names four reasons that must travel with an alert, and two of them
+    are not always available. Saying which, with a count, is better than
+    leaving a reader to wonder why some rows are shorter — and the count moves
+    every time the monitor runs.
+    """
+    out = {"total": int(len(df))}
+    for name, cols in _FEATURE_FAMILIES.items():
+        present = [c for c in cols if c in df.columns]
+        n = int(df[present].notna().any(axis=1).sum()) if present else 0
+        out[name] = n
+        out[f"{name}_pct"] = (n / len(df)) if len(df) else 0.0
+    return out
+
+
+def alert_clusters(df: pd.DataFrame, gap_hours: int | None = None) -> dict:
+    """Alerts per distinct run of activity, per detector.
+
+    The live frame gives every bar its own `window_id`, so one sustained
+    anomaly writes several alerts and several denominator entries. Collapsing
+    a ticker's alerts that sit within `gap_hours` of each other says how much
+    of the raw count is repetition — which is the honest context for comparing
+    the live hit rate against the offline precision, and is the reason the two
+    are not adjusted to match.
+
+    Clusters are transitive along consecutive alerts, matching
+    `events.distinct_announcements`: three alerts an hour apart are one run,
+    not two.
+    """
+    gap = (gap_hours if gap_hours is not None else window_hours()) * 3600
+    out = {}
+    if df.empty or "detector" not in df:
+        return out
+    for detector, rows in df.groupby("detector"):
+        clusters = 0
+        for _, per_ticker in rows.groupby("ticker"):
+            stamps = sorted(int(t) for t in per_ticker["ts_utc"])
+            if not stamps:
+                continue
+            clusters += 1
+            clusters += sum(1 for a, b in zip(stamps, stamps[1:]) if b - a > gap)
+        out[str(detector)] = {
+            "alerts": int(len(rows)),
+            "clusters": clusters,
+            "per_cluster": (len(rows) / clusters) if clusters else float("nan"),
+        }
+    return out
+
+
+# --------------------------------------------------------------------------
 # the alert budget — UI-context.md rules 5 and 6
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=300)

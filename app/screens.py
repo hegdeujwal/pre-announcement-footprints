@@ -47,15 +47,22 @@ _REASON = {
 #: `UI-context.md` rule 1 names four things that must be in the row — volume
 #: multiple, benchmark-relative move, hours since the last 8-K, news coverage —
 #: and a flat list could not deliver them. It ran volume_z, ret_rel_4h,
-#: ret_rel_24h, ret_4h and stopped at four, so on the 513 alerts that have a
+#: ret_rel_24h, ret_4h and stopped at four, so on every alert that has a
 #: benchmark-relative move the four slots went to volume plus three restatements
 #: of the same move, and 8-K recency never appeared at all. Grouping the returns
 #: into one "the move" slot spends each of the four on a different idea.
+#:
+#: (When this was written, 513 of 2,033 logged alerts carried a
+#: benchmark-relative move. That share has since risen past half as the price
+#: snapshot caught up, which changes how often the fallback below is reached
+#: but not the reason the slots are grouped. `data.feature_coverage` computes
+#: the current figure; the caption on screen reads it from there.)
 _SLOTS = (
     ("volume_z",),
-    # The move, benchmark-relative where we have it. `ret_rel_*` is missing on
-    # 1,520 of the 2,033 logged alerts — bars scored past the benchmark's own
-    # newest bar — so the raw return is the fallback rather than a second slot.
+    # The move, benchmark-relative where we have it. `ret_rel_*` is missing
+    # whenever a bar was scored past the benchmark's own newest bar, so the raw
+    # return is the fallback rather than a second slot. The share varies with
+    # how far the benchmark's data extends — see `data.feature_coverage`.
     ("ret_rel_4h", "ret_rel_24h", "ret_4h", "ret_24h"),
     ("days_since_last_8k",),
     ("hours_since_news", "news_count_24h"),
@@ -126,7 +133,7 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
 
     c = st.columns(5)
     # No `delta` here: Streamlit renders one with a directional arrow, and an
-    # arrow beside "of 2,033 logged" reads as a trend when it is a denominator.
+    # arrow beside "of N logged" reads as a trend when it is a denominator.
     c[0].metric(f"In view · of {ui.num(len(all_rows))}", ui.num(len(view)),
                 help="Alerts matching the filters above, out of every alert "
                      "ever logged.")
@@ -165,8 +172,9 @@ def _volume_trend(df: pd.DataFrame) -> None:
     It is the fastest way to see the thing a count cannot show: whether today
     is unusual, and whether a step in the series is the market or a change we
     made. This log has one such step by construction — coverage widened from
-    400 tickers to 1,500 on 2026-09-07 — and a reader who cannot see it would
-    mistake it for a signal.
+    400 tickers to 1,500 on 2026-09-07, when the scheduled job went live — and
+    a reader who cannot see it would mistake it for a signal. That is a fixed
+    historical fact about the series, not a figure that drifts.
     """
     if df.empty:
         return
@@ -259,24 +267,43 @@ def alerts_today() -> None:
     if sel and sel[0] < len(view):
         _alert_detail(view.iloc[sel[0]])
     else:
-        st.caption("**Strength bands come from the observed distribution**, not "
-                   "round numbers: the median alert sits at 1.6× its threshold "
-                   "and the 90th percentile at 4.3×. Extreme ≥10×, Strong ≥4×, "
-                   "Elevated ≥2×. Select a row above to open it.")
+        dist = data.strength_distribution(df)
+        # Read from the log rather than written down: these figures were once
+        # literals here and were wrong within a fortnight of being typed.
+        where = (f"the median alert sits at {dist['median']:.1f}× its "
+                 f"threshold and the 90th percentile at {dist['p90']:.1f}×"
+                 if dist["median"] is not None else
+                 "no alert in this log carries a usable threshold")
+        st.caption(f"**Strength bands come from the observed distribution**, "
+                   f"not round numbers: across the {ui.num(dist['n'])} logged "
+                   f"alerts, {where}. Extreme ≥10×, Strong ≥4×, Elevated ≥2×. "
+                   f"Select a row above to open it.")
 
     # Rule 1 names four reasons. Two of them are not always available, and
     # saying so once is better than leaving a reader to wonder which alerts are
     # missing an explanation and why.
+    cov = data.feature_coverage(df)
+    # Both counts are read off the log. They move every time the monitor runs —
+    # the benchmark-relative share in particular went from a minority to a
+    # majority as the price snapshot caught up — so a written-down figure here
+    # is a figure that will be wrong by the next presentation.
+    news_line = (
+        "**News coverage is absent from every live alert** — "
+        "`features.include_news_coverage` is off in the config, because "
+        "whether the news channel helps is the Phase 8 experiment and the "
+        "live monitor runs the same arm every earlier phase ran."
+        if not cov["news"] else
+        f"News coverage is recorded on {ui.num(cov['news'])} of "
+        f"{ui.num(cov['total'])} alerts ({ui.pct(cov['news_pct'], 0)}).")
     st.caption(
         "**Why some rows show fewer than four reasons.** Rule 1 asks for four: "
         "volume multiple, benchmark-relative move, hours since the last 8-K, "
-        "and news coverage. **News coverage is absent from every live alert** — "
-        "`features.include_news_coverage` is off in the config, because whether "
-        "the news channel helps is the Phase 8 experiment and the live monitor "
-        "runs the same arm every earlier phase ran. And the benchmark-relative "
-        "move is recorded on 513 of the 2,033 logged alerts; the rest were "
-        "scored on bars past the benchmark's own newest bar, and show the raw "
-        "return instead. Neither gap is filled with a fabricated value.")
+        f"and news coverage. {news_line} And the benchmark-relative move is "
+        f"recorded on {ui.num(cov['benchmark_relative'])} of "
+        f"{ui.num(cov['total'])} logged alerts "
+        f"({ui.pct(cov['benchmark_relative_pct'], 0)}); the rest were scored "
+        "on bars past the benchmark's own newest bar, and show the raw return "
+        "instead. Neither gap is filled with a fabricated value.")
 
     with st.expander("Alert volume over time — is today unusual?"):
         _volume_trend(df)
@@ -568,12 +595,23 @@ def evaluation() -> None:
                 "`python -m src.baselines.compare --split val --out …`")
         return
 
+    # The base rate is read off the table actually on screen, not written
+    # down: it differs between the validation and sealed-test frames (0.461%
+    # against 0.319%), so a literal here would contradict the file it is
+    # describing the moment either is loaded.
+    pooled = table[table["slice"] == "all"]["base_rate"].dropna()
+    rate = float(pooled.iloc[0]) if len(pooled) else None
     ui.note(
-        "**Plain accuracy is not reported anywhere, by design.** Only ~0.285% "
-        "of hours precede an event, so a system that always says \"nothing is "
-        "coming\" is **99.71%** accurate and useless. The function that would "
-        "compute it raises an error instead. The headline is precision at the "
-        "fixed alert budget.")
+        "**Plain accuracy is not reported anywhere, by design.** "
+        + (f"Only **{rate * 100:.3f}%** of hours in this frame precede an "
+           f"event, so a system that always says \"nothing is coming\" is "
+           f"**{(1 - rate) * 100:.2f}%** accurate and useless. "
+           if rate is not None else
+           "Well under one per cent of hours precede an event, so a system "
+           "that always says \"nothing is coming\" scores over 99% and is "
+           "useless. ")
+        + "The function that would compute it raises an error instead. The "
+          "headline is precision at the fixed alert budget.")
     ui.note(
         "**Scheduled and unscheduled are never pooled.** Scheduled events — "
         "results announcements — have dates published weeks ahead, so a run-up "
@@ -764,15 +802,22 @@ def monitor_log() -> None:
             f"`python -m src.live.outcomes` against a database holding the "
             f"filings to close the gap.")
 
+    # Measured off the log, per detector, rather than quoting one detector's
+    # count from the day this note was written.
+    clusters = data.alert_clusters(df)
+    measured = "; ".join(
+        f"**{name}** {ui.num(c['alerts'])} alerts span {ui.num(c['clusters'])} "
+        f"clusters, {c['per_cluster']:.2f} per cluster"
+        for name, c in sorted(clusters.items()))
     ui.note(
         f"**The live rate is not comparable to the offline precision figures.** "
         f"Offline, each event gets one {hours}-bar window and at most one FLAG "
         f"inside it, so precision counts one alert per event-window. Live, "
         f"`window_id` is `live:<ticker>:<ts>` — **every bar is its own window, "
         f"with no dedupe** — so one sustained anomaly writes several alerts and "
-        f"several denominator entries. Measured on this log, cusum's 1,105 "
-        f"alerts span 593 distinct {hours}-hour ticker-clusters, 1.86 alerts "
-        f"per cluster. The two numbers answer different questions and neither "
+        f"several denominator entries. Measured on this log, collapsing each "
+        f"ticker's alerts that sit within {hours} hours of each other: "
+        f"{measured}. The two numbers answer different questions and neither "
         f"is adjusted to match the other.")
 
     ui.note(

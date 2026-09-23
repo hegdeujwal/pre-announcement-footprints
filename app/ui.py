@@ -45,11 +45,18 @@ DISCLAIMER = (
 )
 
 #: Severity bands, set from the OBSERVED distribution rather than round
-#: numbers. Across the live log the median alert sits at 1.6x its threshold
-#: and the 90th percentile at 4.3x, so a "3x and above is critical" scale — the
-#: first thing tried — labelled every visible row "very strong" and carried no
-#: information at all. These bands put roughly the top 2%, 10% and 40% in the
-#: three upper bands, which is what makes a queue sortable by eye.
+#: numbers. A "3x and above is critical" scale — the first thing tried —
+#: labelled every visible row "very strong" and carried no information at all.
+#: These edges put roughly the top few per cent, tenth and third of the log in
+#: the three upper bands, which is what makes a queue sortable by eye.
+#:
+#: The edges are deliberately FIXED rather than recomputed per render: a band
+#: that moved with the data would relabel yesterday's alert overnight, and an
+#: analyst working a queue needs "Strong" to mean the same thing on Tuesday as
+#: it did on Monday. `data.strength_distribution` reports where the log
+#: currently sits, and the caption on screen quotes it, so the two can be
+#: compared — if the distribution drifts far from these edges, that is a signal
+#: to revisit them deliberately, not a reason to float them.
 _BANDS = [(10.0, "Extreme"), (4.0, "Strong"), (2.0, "Elevated"), (0.0, "Marginal")]
 
 #: Layout only — no colour, so it holds in either theme.
