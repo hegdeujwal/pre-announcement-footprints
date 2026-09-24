@@ -51,7 +51,8 @@ def make(offset=0, detector="cusum"):
 def test_the_whole_cycle_runs_in_one_call(cfg, conn, tmp_path):
     """A four-step shell pipeline fails in four ways and three are silent."""
     out = tmp_path / "alerts.csv"
-    result = run(cfg, conn, fetch=False, log_csv=str(out))
+    result = run(cfg, conn, fetch=False, log_csv=str(out),
+                 outcomes_csv=str(tmp_path / "o.csv"))
 
     for key in ("bars_scored", "alerts_found", "alerts_new", "outcomes",
                 "chain", "log", "elapsed_s"):
@@ -62,7 +63,8 @@ def test_the_whole_cycle_runs_in_one_call(cfg, conn, tmp_path):
 def test_it_verifies_the_chain_every_run(cfg, conn, tmp_path):
     """A break found weeks later is a break nobody can date."""
     append(conn, [make(offset=i) for i in range(3)])
-    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"))
+    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
+                 outcomes_csv=str(tmp_path / "o.csv"))
     assert result["chain"]["cusum"] is True
 
 
@@ -71,20 +73,23 @@ def test_a_broken_chain_is_reported_not_swallowed(cfg, conn, tmp_path):
     conn.execute("UPDATE alerts SET score = 99.0 WHERE seq = 1")
     conn.commit()
 
-    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"))
+    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
+                 outcomes_csv=str(tmp_path / "o.csv"))
     assert result["chain"]["cusum"] is False
 
 
 def test_outcomes_are_backfilled_after_alerts_are_logged(cfg, conn, tmp_path):
     """Ordering matters: an alert raised today and a filing that lands in the
     same run must both be accounted for."""
-    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"))
+    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
+                 outcomes_csv=str(tmp_path / "o.csv"))
     assert "outcomes" in result
     assert set(result["outcomes"]) >= {"scored", "filed", "pending"}
 
 
 def test_no_fetch_downloads_nothing(cfg, conn, tmp_path):
-    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"))
+    result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
+                 outcomes_csv=str(tmp_path / "o.csv"))
     assert result["bars_appended"] == 0
 
 

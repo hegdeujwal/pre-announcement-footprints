@@ -6,7 +6,8 @@
 #   3. scores the new bars with the tuned detectors,
 #   4. appends any alerts to the log,
 #   5. backfills outcomes for alerts whose 48-hour window has now elapsed,
-#   6. commits the log back to this repository.
+#   6. commits the log, and the outcomes graded so far, back to this
+#      repository (live-log/alerts.csv and live-log/outcomes.csv).
 #
 # Step 2 is not optional. `backfill` can only answer an alert whose whole
 # window falls at or before the newest filing held locally, so without a fresh
@@ -238,7 +239,7 @@ jobs:
       # a no-op when the cached database already holds these rows, and it
       # never recomputes a hash — a restored row is checked against the hash it
       # was written with, or corruption would verify perfectly.
-      - name: Restore the alert log from git
+      - name: Restore the alert log and its outcomes from git
         run: |
           if [ -f live-log/alerts.csv ]; then
             python -c "
@@ -247,6 +248,18 @@ jobs:
           from src.utils.config import load_config
           cfg = load_config(); conn = db.get_conn(cfg['paths']['db'])
           print('restored', import_csv(conn, 'live-log/alerts.csv'), 'alert rows')
+          "
+          fi
+          # The grades, after the alerts they point at. Restoring them means a
+          # rebuilt cache does not have to re-grade from scratch, and the
+          # export's shrink guard has the full record to compare against.
+          if [ -f live-log/outcomes.csv ]; then
+            python -c "
+          from src import db
+          from src.live import import_outcomes_csv
+          from src.utils.config import load_config
+          cfg = load_config(); conn = db.get_conn(cfg['paths']['db'])
+          print('restored', import_outcomes_csv(conn, 'live-log/outcomes.csv'), 'outcome rows')
           "
           fi
 
@@ -286,9 +299,13 @@ jobs:
         run: |
           git config user.name  "live-monitor"
           git config user.email "live-monitor@users.noreply.github.com"
+          # Outcomes are committed beside the log so any clone — the
+          # dashboard on a laptop, an examiner — sees the grades this job
+          # found, not only what its own database can grade.
           git add live-log/alerts.csv
+          [ -f live-log/outcomes.csv ] && git add live-log/outcomes.csv
           if git diff --cached --quiet; then
-            echo "no new alerts to commit"
+            echo "no new alerts or outcomes to commit"
             exit 0
           fi
           git commit -m "chore(live): alert log $(date -u +%Y-%m-%dT%H:%MZ)"

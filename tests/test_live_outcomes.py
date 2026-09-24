@@ -310,3 +310,70 @@ def test_item_breakdown_counts_what_was_caught(cfg, conn):
     backfill(cfg, conn)
     items = item_breakdown(conn)
     assert items["1.01"] == 1 and items["5.02"] == 1
+
+
+# --------------------------------------------------------------------------
+# The committed outcome file
+# --------------------------------------------------------------------------
+def _graded(cfg, conn):
+    """One hit (AAA) and one miss (BBB), both scored."""
+    append(conn, [make("AAA", offset=0), make("BBB", offset=0)])
+    add_filing(conn, "AAA", BASE + 5 * HOUR, "0001")
+    add_filing(conn, "AAA", BASE + 100 * HOUR, "0002")    # moves the horizon
+    assert backfill(cfg, conn)["scored"] == 2
+
+
+def _fresh_with_alerts(tmp_path, conn, name):
+    """A second database holding the same alert log, and no outcomes."""
+    from src.live import export_csv, import_csv
+    export_csv(conn, tmp_path / "alerts.csv")
+    other = db.get_conn(tmp_path / name)
+    db.upsert_companies(other, [{"cik": "C1", "ticker": "AAA", "in_universe": 1},
+                                {"cik": "C2", "ticker": "BBB", "in_universe": 1}])
+    import_csv(other, tmp_path / "alerts.csv")
+    return other
+
+
+def test_outcomes_round_trip_through_csv(cfg, conn, tmp_path):
+    """A database with no filings at all can show the grades the scheduled job
+    found — which is the whole reason the file is committed."""
+    from src.live import export_outcomes_csv, import_outcomes_csv
+    _graded(cfg, conn)
+    path = tmp_path / "outcomes.csv"
+    assert export_outcomes_csv(conn, path) == 2
+
+    other = _fresh_with_alerts(tmp_path, conn, "other.db")
+    assert import_outcomes_csv(other, path) == 2
+    assert import_outcomes_csv(other, path) == 0          # idempotent
+
+    q = ("SELECT alert_id, checked_utc, filed, accession_no, item_code, "
+         "t0_utc, lead_trading_h FROM alert_outcomes ORDER BY alert_id")
+    assert ([tuple(r) for r in other.execute(q)]
+            == [tuple(r) for r in conn.execute(q)])
+    assert unscored(other) == []
+
+
+def test_the_outcome_export_refuses_to_shrink(cfg, conn, tmp_path):
+    """Outcomes are never deleted, so a shorter export means a partial
+    database — it must not overwrite the fuller record."""
+    from src.live import export_outcomes_csv
+    _graded(cfg, conn)
+    path = tmp_path / "outcomes.csv"
+    export_outcomes_csv(conn, path)
+    before = path.read_bytes()
+
+    conn.execute("DELETE FROM alert_outcomes WHERE filed = 0")
+    with pytest.raises(SystemExit, match="LOSE rows"):
+        export_outcomes_csv(conn, path)
+    assert path.read_bytes() == before
+
+
+def test_an_outcome_without_its_alert_fails_loudly(cfg, conn, tmp_path):
+    from src.live import export_outcomes_csv, import_outcomes_csv
+    _graded(cfg, conn)
+    path = tmp_path / "outcomes.csv"
+    export_outcomes_csv(conn, path)
+
+    empty = db.get_conn(tmp_path / "empty.db")
+    with pytest.raises(SystemExit, match="Import the alert log"):
+        import_outcomes_csv(empty, path)

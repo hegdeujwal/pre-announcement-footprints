@@ -48,10 +48,16 @@ from src.utils.timeutils import ts_to_iso, utc_now_ts
 #: have silently dropped every commit the scheduled job made.
 DEFAULT_LOG_CSV = "live-log/alerts.csv"
 
+#: The grades for that log — did a filing follow each alert? Committed beside
+#: it so any copy of the project sees the same answers the scheduled job found,
+#: not just whatever its own database can grade.
+DEFAULT_OUTCOMES_CSV = "live-log/outcomes.csv"
+
 
 def run(cfg: dict, conn, max_tickers: int | None = None,
         fetch: bool = True, log_csv: str | None = DEFAULT_LOG_CSV,
-        as_of: int | None = None) -> dict:
+        as_of: int | None = None,
+        outcomes_csv: str | None = DEFAULT_OUTCOMES_CSV) -> dict:
     """Fetch, scan, log, backfill outcomes, export. Returns a summary dict.
 
     Ordering matters. Outcomes are backfilled **after** the new alerts are
@@ -62,7 +68,7 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     from src.live.alertlog import append, export_csv, summary, verify_chain
     from src.live.monitor import (build_detectors, conform, fetch_latest,
                                   fetch_recent_filings, latest_bar_frame)
-    from src.live.outcomes import backfill
+    from src.live.outcomes import backfill, export_outcomes_csv
 
     started = time.time()
     result: dict = {"started_utc": utc_now_ts()}
@@ -107,6 +113,9 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     if log_csv:
         result["exported_rows"] = export_csv(conn, log_csv)
         result["log_csv"] = str(log_csv)
+    if outcomes_csv:
+        result["exported_outcomes"] = export_outcomes_csv(conn, outcomes_csv)
+        result["outcomes_csv"] = str(outcomes_csv)
 
     result["elapsed_s"] = round(time.time() - started, 1)
     return result
@@ -143,6 +152,9 @@ def render(result: dict) -> str:
     if "exported_rows" in result:
         lines.append(f"exported      : {result['exported_rows']:,} rows -> "
                      f"{result['log_csv']}")
+    if "exported_outcomes" in result:
+        lines.append(f"              : {result['exported_outcomes']:,} outcomes "
+                     f"-> {result['outcomes_csv']}")
     lines.append(f"elapsed       : {result['elapsed_s']}s")
     return "\n".join(lines)
 
@@ -157,6 +169,8 @@ def main() -> None:
                     help="score what is already stored; download nothing")
     ap.add_argument("--log-csv", default=DEFAULT_LOG_CSV,
                     help="where to export the durable log")
+    ap.add_argument("--outcomes-csv", default=DEFAULT_OUTCOMES_CSV,
+                    help="where to export the log's graded outcomes")
     ap.add_argument("--as-of", type=int, default=None)
     args = ap.parse_args()
 
@@ -164,7 +178,7 @@ def main() -> None:
     conn = db.get_conn(cfg["paths"]["db"])
     result = run(cfg, conn, max_tickers=args.max_tickers,
                  fetch=not args.no_fetch, log_csv=args.log_csv,
-                 as_of=args.as_of)
+                 as_of=args.as_of, outcomes_csv=args.outcomes_csv)
     print(render(result))
 
     # A broken chain is the one condition that must fail the job rather than

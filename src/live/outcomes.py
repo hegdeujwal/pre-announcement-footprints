@@ -233,6 +233,113 @@ def item_breakdown(conn, detector: str | None = None) -> dict:
     return {r["item_code"]: int(r["n"]) for r in conn.execute(sql, params)}
 
 
+#: The CSV column order for exported outcomes. Fixed for the same reason as
+#: `alertlog.CSV_COLUMNS`: a diff between two exports is a diff in the data.
+OUTCOME_CSV_COLUMNS = ("alert_id", "checked_utc", "filed", "accession_no",
+                       "item_code", "t0_utc", "lead_trading_h")
+
+
+def _csv_row_count(path) -> int:
+    """Data rows in an exported outcome file. 0 if there is no readable file."""
+    import csv
+    from pathlib import Path
+
+    path = Path(path)
+    if not path.exists():
+        return 0
+    try:
+        with path.open(newline="", encoding="utf-8") as fh:
+            return sum(1 for r in csv.DictReader(fh) if r.get("alert_id"))
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return 0
+
+
+def export_outcomes_csv(conn, path) -> int:
+    """Write every graded outcome to CSV. Returns rows written.
+
+    The alert log was committed from the start, but its grades were not: they
+    lived only in the scheduled job's database cache, so every other copy of
+    the project — the dashboard on a laptop, an examiner's clone — could grade
+    only what its own database happened to hold, and showed the rest as "not
+    scored". Committing the grades beside the log gives them the same external
+    history the alerts have: git records WHEN each answer was written down.
+
+    Outcomes are first-write-wins, exactly like the log (`backfill` inserts
+    with ON CONFLICT DO NOTHING), so the file only ever grows. The same shrink
+    guard as `alertlog.export_csv` applies: an export with fewer rows than the
+    file on record means the database is missing outcomes it once had, and it
+    refuses rather than overwriting the fuller record.
+    """
+    import csv
+    from pathlib import Path
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = conn.execute(
+        f"SELECT {', '.join(OUTCOME_CSV_COLUMNS)} FROM alert_outcomes "
+        f"ORDER BY alert_id").fetchall()
+
+    before = _csv_row_count(path)
+    if len(rows) < before:
+        raise SystemExit(
+            f"refusing to export {path}: the outcomes would LOSE rows "
+            f"({before:,} on record, {len(rows):,} to write). Outcomes are "
+            f"never deleted, so a shorter export means the database is "
+            f"incomplete. Restore them with `import_outcomes_csv` before "
+            f"exporting again; the committed file has not been touched.")
+
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        writer.writerow(OUTCOME_CSV_COLUMNS)
+        for r in rows:
+            writer.writerow(["" if r[c] is None else r[c]
+                             for c in OUTCOME_CSV_COLUMNS])
+    return len(rows)
+
+
+def import_outcomes_csv(conn, path) -> int:
+    """Restore outcomes from CSV. Returns rows inserted (existing ones skipped).
+
+    Import the alert log FIRST: every outcome points at an alert, and an
+    outcome whose alert is missing means the two files disagree. That fails
+    loudly rather than being skipped — silently dropping it would make the
+    next export shrink, and the shrink guard would then fire with a less
+    useful message.
+    """
+    import csv
+    from pathlib import Path
+
+    def _int(v):
+        return None if v in ("", None) else int(v)
+
+    def _float(v):
+        return None if v in ("", None) else float(v)
+
+    with Path(path).open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+
+    known = {r[0] for r in conn.execute("SELECT alert_id FROM alerts")}
+    orphans = [r["alert_id"] for r in rows if r["alert_id"] not in known]
+    if orphans:
+        raise SystemExit(
+            f"{len(orphans):,} outcome(s) in {path} point at alerts this "
+            f"database does not hold (first: {orphans[0]}). Import the alert "
+            f"log before its outcomes.")
+
+    inserted = 0
+    for r in rows:
+        cur = conn.execute(
+            "INSERT INTO alert_outcomes (alert_id, checked_utc, filed, "
+            "accession_no, item_code, t0_utc, lead_trading_h) "
+            "VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            (r["alert_id"], int(r["checked_utc"]), _int(r["filed"]),
+             r["accession_no"] or None, r["item_code"] or None,
+             _int(r["t0_utc"]), _float(r["lead_trading_h"])))
+        inserted += cur.rowcount
+    conn.commit()
+    return inserted
+
+
 def main() -> None:
     from src import db
 
