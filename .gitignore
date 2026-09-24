@@ -41,6 +41,8 @@ tensorboard/
 
 # OS / editor
 .DS_Store
+# LibreOffice lock files, left behind while a CSV is open
+.~lock.*#
 .idea/
 .vscode/
 
