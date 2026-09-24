@@ -1,0 +1,60 @@
+{
+  "created_utc": 1789020388,
+  "data": {
+    "positives": 4707,
+    "rows": 890382,
+    "window_id_sha256": "b9f5392295084b11",
+    "windows": 18828
+  },
+  "elapsed_s": 80.9,
+  "features": [
+    "ret_1h",
+    "ret_4h",
+    "ret_24h",
+    "ret_120h",
+    "volume_z",
+    "volatility",
+    "ret_rel_1h",
+    "ret_rel_4h",
+    "ret_rel_24h",
+    "ret_rel_120h"
+  ],
+  "final_flag_rate": 0.961,
+  "flag_rate": 0.8346686330782312,
+  "git": {
+    "commit": "9ada635b2b6b16f10ef84142356c3d38fcbfa25e",
+    "dirty": true
+  },
+  "reward": {
+    "r_correct_flag": 1.0,
+    "r_early_bonus": 0.5,
+    "r_false_alarm": -2.0,
+    "r_missed": -0.5,
+    "r_wait": -0.005
+  },
+  "rl_config": {
+    "algo": "PPO",
+    "batch_size": 256,
+    "device": "cpu",
+    "gamma": 1.0,
+    "learning_rate": 0.0003,
+    "n_envs": 4,
+    "n_steps": 512,
+    "net_arch": [
+      64,
+      64
+    ],
+    "obs_clip": 10.0,
+    "runs_dir": "data/runs",
+    "seed": 42,
+    "total_timesteps": 300000
+  },
+  "seed": 43,
+  "total_timesteps": 300000,
+  "versions": {
+    "numpy": "2.5.1",
+    "python": "3.13.7",
+    "stable_baselines3": "2.9.0",
+    "torch": "2.13.0+cu130"
+  }
+}

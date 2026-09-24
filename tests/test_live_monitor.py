@@ -319,3 +319,49 @@ def test_the_benchmark_is_fetched_even_though_it_is_not_in_the_universe(cfg, con
     assert bench_calls[0][1] == bench_newest + 1, (
         "the benchmark must resume from its own newest bar, or the gap between "
         "it and the universe is stepped over and never filled")
+
+
+# --------------------------------------------------------------------------
+# The learned policy in the live run
+# --------------------------------------------------------------------------
+def _with_policy(cfg, run, sha):
+    return {**cfg, "live": {**cfg.get("live", {}),
+                            "policies": [{"run": str(run), "threshold": 0.99,
+                                          "sha256": sha}]}}
+
+
+def test_the_configured_policy_is_frozen_in_git_and_matches_its_hash(cfg):
+    """The committed file IS the pre-registration: if it and config disagree,
+    the live RL series would be scored by something nobody registered."""
+    from src.live.monitor import live_policies
+    policies = live_policies(cfg)
+    assert policies, "config names no live policy"
+    for p in policies:
+        assert p["run"].startswith("models/live/")
+        assert p["name"].startswith("rl_policy[")
+
+
+def test_a_changed_policy_file_fails_the_run(cfg, tmp_path):
+    from src.live.monitor import live_policies
+    (tmp_path / "p6-x-s1").mkdir()
+    (tmp_path / "p6-x-s1" / "policy.zip").write_bytes(b"not the frozen model")
+    with pytest.raises(SystemExit, match="has been changed"):
+        live_policies(_with_policy(cfg, tmp_path / "p6-x-s1", "0" * 64))
+
+
+def test_a_missing_policy_file_fails_the_run_not_silently(cfg, tmp_path):
+    """A policy that dropped out would leave a gap that looks like a quiet
+    market."""
+    from src.live.monitor import live_policies
+    with pytest.raises(SystemExit, match="must not drop out"):
+        live_policies(_with_policy(cfg, tmp_path / "p6-x-s1", "0" * 64))
+
+
+def test_the_policy_uses_its_budget_cut_not_its_own_half_rule(cfg):
+    """P(FLAG) >= 0.5 flags almost every hour; the live cut must be the
+    validation budget cut recorded in config."""
+    from src.live.monitor import policy_name
+    cuts = default_thresholds(cfg)
+    for entry in cfg["live"]["policies"]:
+        assert cuts[policy_name(entry["run"])] == float(entry["threshold"])
+        assert cuts[policy_name(entry["run"])] > 0.9

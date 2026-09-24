@@ -633,6 +633,32 @@ live:
   # idempotent — while missing one at the boundary silently costs an outcome,
   # which is the whole point of the live run.
   filing_overlap_hours: 72
+  # Learned policies scored live beside the two rule detectors. ADDED
+  # 2026-09-25, weeks after the rules started, so the RL series in the alert
+  # log starts later than theirs; compare detectors only over days all of them
+  # ran (filter on raised_utc).
+  #
+  # WHICH POLICY, AND WHY. p6-r2-s43 is the seed that was best on VALIDATION
+  # (precision at budget 0.0309, lift 6.7x, baseline-comparison-val-r2.csv),
+  # chosen on that basis alone — so the choice does not lean on the sealed
+  # test set, where it also came first among the seeds. The other four seeds
+  # sat near the random-noise floor and are not run: the offline finding is
+  # that RL is seed-unstable, and that finding stands whatever s43 does live.
+  #
+  # WHY THIS THRESHOLD. The policy's own rule, P(FLAG) >= 0.5, flags almost
+  # every hour. 0.994017 is the budget-implied cut on validation — the same
+  # way the rule detectors' thresholds were set — and on a dry run over the
+  # latest 72,000 stored bars it raised 954 alerts against the rules' 969 and
+  # 803, so all three spend a comparable alert budget.
+  #
+  # The files are COMMITTED under models/live/ rather than kept in data/runs/
+  # (gitignored): git's timestamp is what proves the policy was frozen before
+  # the bars it is scored on. sha256 is checked at load, so a swapped file
+  # fails the run instead of quietly changing the experiment.
+  policies:
+    - run: models/live/p6-r2-s43
+      threshold: 0.994017
+      sha256: 4ad490cdad03403e5ce2600e5ea948f6ebdb44a28f25632d8e39be0b226fc6a0
 
 # ------------------------------------------------------------
 # Reinforcement learning (Phase 6) — the stopping policy

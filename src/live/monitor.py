@@ -144,6 +144,43 @@ def conform(frame: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def policy_name(run) -> str:
+    """The detector name a policy run is logged under, e.g. `rl_policy[s43]`."""
+    from pathlib import Path
+    return f"rl_policy[{Path(run).name.split('-')[-1]}]"
+
+
+def live_policies(cfg: dict) -> list[dict]:
+    """The learned policies config says to score live, each checked on disk.
+
+    Fails loudly rather than skipping. A policy that silently dropped out of
+    the run would leave a gap in its alert series that looks like a quiet
+    market; a file that changed would change the experiment with nothing in
+    the log to show it. Either is worse than a failed job.
+    """
+    import hashlib
+    from pathlib import Path
+
+    out = []
+    for entry in (cfg.get("live") or {}).get("policies") or []:
+        run = Path(entry["run"])
+        model = run / "policy.zip"
+        if not model.exists():
+            raise SystemExit(
+                f"live.policies names {run}, but {model} does not exist. The "
+                f"policy is part of the pre-registered live test and must not "
+                f"drop out silently.")
+        digest = hashlib.sha256(model.read_bytes()).hexdigest()
+        if digest != entry["sha256"]:
+            raise SystemExit(
+                f"{model} has sha256 {digest}, but config records "
+                f"{entry['sha256']}. The frozen policy has been changed; "
+                f"scoring it would quietly change the live experiment.")
+        out.append({"run": str(run), "name": policy_name(run),
+                    "threshold": float(entry["threshold"])})
+    return out
+
+
 def build_detectors(cfg: dict, policy_runs: list[str] | None = None) -> dict:
     """Every detector the monitor should run.
 
@@ -156,11 +193,8 @@ def build_detectors(cfg: dict, policy_runs: list[str] | None = None) -> dict:
 
     detectors = {"cusum": CUSUM(cfg), "volume_zscore": VolumeZScore(cfg)}
     for run in (policy_runs or []):
-        from pathlib import Path
-
         from src.rl import load_policy
-        detectors[f"rl_policy[{Path(run).name.split('-')[-1]}]"] = \
-            load_policy(cfg, run)
+        detectors[policy_name(run)] = load_policy(cfg, run)
     return detectors
 
 
@@ -205,11 +239,14 @@ def _clean_value(value):
 
 
 def default_thresholds(cfg: dict) -> dict:
-    """Each detector's tuned cut, from config."""
+    """Each detector's tuned cut, from config — live policies included."""
     b = cfg["baselines"]
-    return {"cusum": b["cusum"]["threshold"],
+    cuts = {"cusum": b["cusum"]["threshold"],
             "volume_zscore": b["volume_zscore"]["threshold"],
             "default": 0.5}          # policies emit P(FLAG)
+    for entry in (cfg.get("live") or {}).get("policies") or []:
+        cuts[policy_name(entry["run"])] = float(entry["threshold"])
+    return cuts
 
 
 def latest_stored_bar(conn, interval: str, ticker: str | None = None) -> int | None:

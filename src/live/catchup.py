@@ -122,8 +122,10 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
 
 
 def scan_alerts(cfg: dict, conn, frame):
-    from src.live.monitor import build_detectors, scan
-    return scan(cfg, conn, frame, build_detectors(cfg))
+    """Score the frame with the rule detectors and every configured policy."""
+    from src.live.monitor import build_detectors, live_policies, scan
+    runs = [p["run"] for p in live_policies(cfg)]
+    return scan(cfg, conn, frame, build_detectors(cfg, policy_runs=runs))
 
 
 def render(result: dict) -> str:
