@@ -142,8 +142,9 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
                      f"so these cannot be graded. They are excluded from the "
                      f"hit rate rather than counted as misses.")
     c[2].metric("Not scored", ui.num(unscored_n),
-                help="The window closed, but this database holds no outcome "
-                     "row for the alert. Not a miss and not pending — an "
+                help="The window closed, but no outcome is on record for the "
+                     "alert — neither in live-log/outcomes.csv nor in this "
+                     "database. Not a miss and not pending — an "
                      "answer nobody has looked up. Kept as its own count so "
                      "the hit rate's denominator is not mistaken for the set "
                      "of alerts that could be graded.")
@@ -752,14 +753,14 @@ def monitor_log() -> None:
     ui.stat(c[1], "Windows closed", ui.num(cov["answerable"]),
             f"{hours} hours (wall-clock) elapsed, so an answer exists")
     ui.stat(c[2], "Graded here", ui.num(cov["graded"]),
-            "closed AND with an outcome row in this database")
+            "closed AND with an outcome on record")
     ui.stat(c[3], "Not scored", ui.num(cov["unscored"]),
-            "closed, but no outcome row here — an answer nobody looked up")
+            "closed, but no outcome on record — an answer nobody looked up")
 
     # Rule 7, on the live screen as much as the offline one: the unscheduled
     # figure first and at least equal prominence, never a single pooled rate.
     ui.section("Hit rate — split scheduled vs unscheduled",
-               f"Of the {cov['graded']:,} alerts this database can grade, how "
+               f"Of the {cov['graded']:,} alerts with a graded outcome, how "
                f"many were followed by an 8-K within {hours} hours "
                f"(wall-clock). The denominator is the same for both halves: an "
                f"alert followed by nothing is a miss either way, and there is "
@@ -788,12 +789,12 @@ def monitor_log() -> None:
 
     if cov["unscored"]:
         ui.note(
-            f"**The committed log and this database disagree, and the gap is "
+            f"**Some closed windows have no grade on record, and the gap is "
             f"the denominator.** `live-log/alerts.csv` holds "
             f"**{cov['logged']:,}** alerts; **{cov['answerable']:,}** of them "
             f"have a window that closed long enough ago to be answerable, and "
-            f"this database holds an outcome row for **{cov['graded']:,}** of "
-            f"those. The remaining **{cov['unscored']:,}** are shown as *not "
+            f"an outcome is on record — in `live-log/outcomes.csv` or this "
+            f"database — for **{cov['graded']:,}** of those. The remaining **{cov['unscored']:,}** are shown as *not "
             f"scored*, not as pending: their windows closed, nobody has looked "
             f"the answer up here, and calling that \"still open\" would present "
             f"a rate measured on "

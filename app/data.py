@@ -22,6 +22,7 @@ from src.utils.config import load_config
 
 REPO = Path(__file__).resolve().parents[1]
 ALERT_LOG = REPO / "live-log" / "alerts.csv"
+OUTCOME_LOG = REPO / "live-log" / "outcomes.csv"
 
 
 @st.cache_data(ttl=300)
@@ -126,20 +127,12 @@ _OUTCOME_COLS = ["alert_id", "checked_utc", "filed", "accession_no",
                  "item_code", "t0_utc", "lead_trading_h"]
 
 
-@st.cache_data(ttl=300)
-def outcomes() -> pd.DataFrame:
-    """Backfilled outcomes: did a filing follow within the window?
+def _db_outcomes() -> pd.DataFrame:
+    """Outcome rows in the local database, or an empty frame if there is none.
 
-    `filed` is 1 filed, 0 did not, and MISSING for an alert this database has
-    no outcome row for at all. Counting a missing row as a miss would
-    understate the hit rate; calling every one of them "pending" — which is
-    what the join used to imply — overstates how much of the log is genuinely
-    unanswerable. `outcome_state` below separates those two cases.
-
-    The empty frame is returned with the full column list rather than two
-    columns, so a caller that merges on it gets the same shape either way. The
-    old `try` sat INSIDE the `with`, so it never caught the one error that
-    actually happens here: a missing database file, raised while opening.
+    The `try` wraps the `with` rather than sitting inside it, so a missing or
+    unreadable database file — the error that actually happens here — is
+    caught while opening, not missed.
     """
     if not db_present():
         return pd.DataFrame(columns=_OUTCOME_COLS)
@@ -150,6 +143,42 @@ def outcomes() -> pd.DataFrame:
                 "t0_utc, lead_trading_h FROM alert_outcomes", conn)
     except Exception:
         return pd.DataFrame(columns=_OUTCOME_COLS)
+
+
+@st.cache_data(ttl=300)
+def outcomes() -> pd.DataFrame:
+    """Graded outcomes: did a filing follow within the window?
+
+    Two sources, in order. **`live-log/outcomes.csv` first** — the grades the
+    scheduled job worked out and committed beside the alert log, so every
+    clone sees the same answers whatever its own database holds. Then any
+    outcome in the local database that the file does not have yet (graded here
+    with `python -m src.live.outcomes` since the last committed run). Both are
+    first-write-wins, so where they overlap they agree on the answer; the file
+    wins because it is the durable record.
+
+    `filed` is 1 filed, 0 did not, and MISSING for an alert with no outcome on
+    record at all. Counting a missing row as a miss would understate the hit
+    rate; `outcome_state` below separates "not answerable yet" from "nobody
+    has graded it".
+
+    The empty frame carries the full column list, so a caller that merges on
+    it gets the same shape either way.
+    """
+    frames = []
+    if OUTCOME_LOG.exists():
+        try:
+            frames.append(pd.read_csv(OUTCOME_LOG,
+                                      dtype={"accession_no": "string",
+                                             "item_code": "string"}))
+        except Exception:
+            pass
+    frames.append(_db_outcomes())
+    frames = [f for f in frames if not f.empty]
+    if not frames:
+        return pd.DataFrame(columns=_OUTCOME_COLS)
+    merged = pd.concat(frames, ignore_index=True)
+    return merged.drop_duplicates("alert_id", keep="first")[_OUTCOME_COLS]
 
 
 #: The four states an alert can be in, and the words each gets on screen.
@@ -165,7 +194,7 @@ OUTCOME_WORDS = {
     "filed": "8-K followed",
     "none": "no 8-K in window",
     "open": "window still open",
-    "unscored": "not scored — no outcome in this database",
+    "unscored": "not scored — no outcome on record",
 }
 
 

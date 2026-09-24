@@ -267,6 +267,31 @@ def test_every_screen_renders_without_a_database(screen, tmp_path, monkeypatch):
     assert not at.exception, f"{screen} raised with no DB: {at.exception}"
 
 
+def test_committed_outcomes_are_read_without_a_database(tmp_path, monkeypatch):
+    """The grades the scheduled job commits reach a clone that has no database
+    — the gap that left most of the live log showing "not scored"."""
+    import app.data as data
+
+    real = data.config()
+    missing = {**real, "paths": {**real["paths"],
+                                 "db": str(tmp_path / "absent.db")}}
+    log = tmp_path / "outcomes.csv"
+    log.write_text(
+        "alert_id,checked_utc,filed,accession_no,item_code,t0_utc,lead_trading_h\n"
+        "aaa,1788000000,1,0001-26-000001,8.01,1787000000,3.5\n"
+        "bbb,1788000000,0,,,,\n", encoding="utf-8")
+    monkeypatch.setattr(data, "config", lambda: missing)
+    monkeypatch.setattr(data, "OUTCOME_LOG", log)
+    data.outcomes.clear()
+    try:
+        out = data.outcomes().set_index("alert_id")
+    finally:
+        data.outcomes.clear()
+    assert list(out.columns) == data._OUTCOME_COLS[1:]
+    assert out.loc["aaa", "filed"] == 1 and out.loc["bbb", "filed"] == 0
+    assert out.loc["aaa", "accession_no"] == "0001-26-000001"
+
+
 def test_a_missing_database_is_said_out_loud_not_shown_as_zero():
     """An honest empty state, not a fabricated number. A universe of 0 and an
     allowance of 0 would read as measurements."""
