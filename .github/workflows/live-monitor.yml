@@ -149,7 +149,14 @@ jobs:
       SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
 
     steps:
+      # The branch TIP at the moment the job starts, not the commit the run
+      # was queued at. A run queued behind another (concurrency above) would
+      # otherwise start from a tree missing that run's alert-log commit, and
+      # its own commit could never rebase cleanly on top. That happened on
+      # 2026-09-24: two hand-dispatched runs, the second failed to push.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
 
       # Cheap, before pip and a 31 MB download, so a missing secret costs
       # seconds rather than failing deep in the run.
@@ -323,6 +330,9 @@ jobs:
               echo "pushed on attempt ${attempt}"
               exit 0
             fi
+            # A conflicted rebase leaves the tree mid-rebase, and every later
+            # attempt would then fail on that instead of retrying.
+            git rebase --abort 2>/dev/null || true
             echo "push attempt ${attempt} failed — refetching and retrying"
             sleep $((attempt * 10))
           done
