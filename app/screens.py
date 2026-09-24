@@ -124,7 +124,7 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
     resolved = split["resolved"]
     hours = data.window_hours()
     strongest = view.apply(
-        lambda r: ui.strength(r["score"], r["threshold"])[2], axis=1).max() \
+        lambda r: ui.strength(r["score"], r["threshold"], r["detector"])[2], axis=1).max() \
         if not view.empty else float("nan")
     state = (view["outcome_state"] if "outcome_state" in view
              else pd.Series("unscored", index=view.index))
@@ -232,13 +232,13 @@ def alerts_today() -> None:
     # alert by position. Sorting the rendered table separately would silently
     # open the wrong alert the moment the two orders diverged.
     view = view.assign(_mult=view.apply(
-        lambda r: ui.strength(r["score"], r["threshold"])[2], axis=1)
+        lambda r: ui.strength(r["score"], r["threshold"], r["detector"])[2], axis=1)
     ).sort_values("_mult", ascending=False).reset_index(drop=True)
 
     table = pd.DataFrame([{
         "Ticker": r["ticker"],
-        "Strength": ui.strength(r["score"], r["threshold"])[1],
-        "× thresh": round(r["_mult"], 1),
+        "Strength": ui.strength(r["score"], r["threshold"], r["detector"])[1],
+        "× thresh": round(r["_mult"], 1) if pd.notna(r["_mult"]) else None,
         "Detector": r["detector"],
         "Bar (UTC)": ui.short_utc(r["ts_utc"]),
         "Outcome": _outcome(r)[1],
@@ -277,7 +277,10 @@ def alerts_today() -> None:
                  "no alert in this log carries a usable threshold")
         st.caption(f"**Strength bands come from the observed distribution**, "
                    f"not round numbers: across the {ui.num(dist['n'])} logged "
-                   f"alerts, {where}. Extreme ≥10×, Strong ≥4×, Elevated ≥2×. "
+                   f"rule-detector alerts, {where}. A learned policy's alert "
+                   f"is shown as *Policy flag* instead — its score is a "
+                   f"probability pressed against 1.0, not a multiple of a "
+                   f"rule. Extreme ≥10×, Strong ≥4×, Elevated ≥2×. "
                    f"Select a row above to open it.")
 
     # Rule 1 names four reasons. Two of them are not always available, and
@@ -315,10 +318,10 @@ def alerts_today() -> None:
 
 def _alert_detail(r: pd.Series) -> None:
     """One alert opened in place — the master-detail half of the queue."""
-    _, words, mult = ui.strength(r["score"], r["threshold"])
+    _, words, mult = ui.strength(r["score"], r["threshold"], r["detector"])
     with st.container(border=True):
         a, b = st.columns([1, 3])
-        a.metric(r["ticker"], f"{mult:.1f}×", delta=words, delta_color="off")
+        a.metric(r["ticker"], ui.times(mult), delta=words, delta_color="off")
         a.caption(f"{r['detector']} · {_outcome(r)[1]}")
         b.markdown(f"**Bar** {ui.utc(r['ts_utc'])}  \n"
                    f"**Noticed** {ui.utc(r['raised_utc'], False)}  \n"
@@ -346,11 +349,13 @@ def ticker_detail() -> None:
     flagged = c2.selectbox("Flagged hour", list(label), format_func=label.get)
     row = rows[rows["ts_utc"] == flagged].iloc[0]
 
-    key, words, mult = ui.strength(row["score"], row["threshold"])
+    key, words, mult = ui.strength(row["score"], row["threshold"], row["detector"])
     state, _ = _outcome(row)
     s = st.columns(4)
     ui.stat(s[0], "Ticker", ticker, row["detector"])
-    ui.stat(s[1], "Strength", f"{mult:.1f}×", f"{words} — {mult:.1f}× threshold")
+    ui.stat(s[1], "Strength", ui.times(mult),
+            f"{words} — {ui.times(mult)} threshold" if mult == mult else
+            f"{words} — a learned policy's P(FLAG), not a multiple of a rule")
     ui.stat(s[2], "Flagged", dt.datetime.fromtimestamp(
         int(flagged), dt.timezone.utc).strftime("%d %b %H:%M"), ui.utc(flagged))
     hours = data.window_hours()

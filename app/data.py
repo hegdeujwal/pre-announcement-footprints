@@ -346,6 +346,10 @@ def strength_distribution(df: pd.DataFrame) -> dict:
     """
     if df.empty or "score" not in df or "threshold" not in df:
         return {"median": None, "p90": None, "n": 0}
+    # Rule detectors only: a policy's P(FLAG) always sits at about 1.00x its
+    # cut, and counting it would drag the bands' own reference point down.
+    if "detector" in df:
+        df = df[~df["detector"].astype(str).str.startswith("rl_policy")]
     mult = (df["score"] / df["threshold"]).replace(
         [float("inf"), float("-inf")], pd.NA).dropna()
     if mult.empty:

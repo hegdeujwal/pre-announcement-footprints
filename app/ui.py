@@ -116,7 +116,25 @@ def short_utc(ts) -> str:
     return dt.datetime.fromtimestamp(int(ts), dt.timezone.utc).strftime("%d %b %H:%M")
 
 
-def strength(score: float, threshold: float) -> tuple[str, str, float]:
+def times(mult: float) -> str:
+    """A multiple of threshold for display, or a dash when there is none."""
+    return "—" if mult != mult else f"{mult:.1f}×"
+
+
+def is_policy(detector) -> bool:
+    """Is this alert from a learned policy rather than a rule-based detector?
+
+    A policy's score is P(FLAG), squeezed against 1.0: its live cut is about
+    0.994, so every alert it raises sits at roughly 1.00x threshold. Dividing
+    one by the other says nothing about how unusual the hour was, so the
+    strength bands, which were set from the rule detectors' distribution, are
+    not applied to it.
+    """
+    return isinstance(detector, str) and detector.startswith("rl_policy")
+
+
+def strength(score: float, threshold: float,
+             detector: str | None = None) -> tuple[str, str, float]:
     """(band key, words, multiple-of-threshold) for one alert.
 
     Deliberately NOT called "confidence". These detectors emit scores that are
@@ -126,6 +144,8 @@ def strength(score: float, threshold: float) -> tuple[str, str, float]:
     not have. The honest uncertainty figure is the measured hit rate, which
     `honest_rate` renders beside it.
     """
+    if is_policy(detector):
+        return "policy", "Policy flag", float("nan")
     if not threshold:
         return "marginal", "Marginal", float("nan")
     mult = score / threshold
