@@ -246,6 +246,7 @@ def test_main_prints_the_scheduled_unscheduled_split_not_only_the_pooled_row(
     monkeypatch.setattr(db, "get_conn", lambda *a, **k: None)
     monkeypatch.setattr(compare, "split_bounds", lambda *a, **k: (0, 1))
     monkeypatch.setattr(compare, "build_eval_frame", lambda *a, **k: frame)
+    monkeypatch.setattr(compare, "train_positives", lambda cfg: frame)
     monkeypatch.setattr(sys, "argv",
                         ["compare", "--variant", "news_adjusted", "--skip-gb"])
 
@@ -381,6 +382,7 @@ def test_run_baselines_can_fit_gradient_boosting_without_a_caller_supplied_model
     monkeypatch.setattr(compare_mod, "GradientBoosting", StubGB)
     monkeypatch.setattr(compare_mod, "build_training_frame",
                         lambda cfg, conn, ratio=None: frame)
+    monkeypatch.setattr(compare_mod, "train_positives", lambda cfg: frame)
 
     cfg = load_config()
     frame = make_synthetic_predictions(n_positive=4, n_quiet=30, seed=1)

@@ -35,6 +35,7 @@ import pandas as pd
 
 from src.baselines.always_quiet import AlwaysQuiet
 from src.baselines.random_noise import RandomNoise
+from src.baselines.ticker_prior import TickerPrior
 from src.baselines.cusum import CUSUM
 from src.baselines.gradient_boosting import GradientBoosting
 from src.baselines.volume_zscore import VolumeZScore
@@ -122,6 +123,22 @@ def build_training_frame(cfg: dict, conn,
     return conform(pd.concat([positives, quiet], ignore_index=True))
 
 
+def train_positives(cfg: dict) -> pd.DataFrame:
+    """The train split's positive episodes — all `TickerPrior` needs.
+
+    Read straight from the feature matrix rather than through
+    `build_training_frame`, which also samples quiet windows that the prior
+    never looks at. Same bounds and same matrix, so both fits see the same
+    positives.
+    """
+    from src.pipeline.features import matrix_path
+
+    lo, hi = split_bounds(cfg, "train")
+    matrix = pd.read_parquet(matrix_path(cfg),
+                             columns=["window_id", "ticker", "ts_utc", "t0_utc"])
+    return matrix[(matrix.ts_utc >= lo) & (matrix.ts_utc < hi)]
+
+
 def noise_seeds(cfg: dict) -> list[int]:
     """The seeds the null is drawn at — a spread, not a single point.
 
@@ -173,6 +190,10 @@ def run_baselines(cfg: dict, conn, frame: pd.DataFrame,
     models: list = [AlwaysQuiet(cfg)]
     models += [RandomNoise(cfg, seed=s) for s in noise_seeds(cfg)]
     models += [VolumeZScore(cfg), CUSUM(cfg)]
+    # The stock-selection control: which stock, never which hour. A timing
+    # detector that does not clearly beat this row is mostly picking
+    # filing-prone companies. See `ticker_prior.py`.
+    models.append(TickerPrior(cfg).fit(train_positives(cfg), conn=conn))
     if not skip_gb:
         # The training frame does not depend on which t0 variant labels the
         # EVALUATION set, so a caller sweeping variants fits once and passes

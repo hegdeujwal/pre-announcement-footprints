@@ -497,6 +497,13 @@ baselines:
     # without cluttering the table, and each row costs one score vector
     # because this baseline reads no features.
     seeds: [42, 43, 44, 45, 46]
+  ticker_prior:
+    # The stock-selection control (added 2026-10-05). Scores a stock by its
+    # count of train-split positive episodes and reads nothing about the hour,
+    # so it measures how much lift is available from picking filing-prone
+    # companies alone. Ties within a stock are broken by seeded jitter smaller
+    # than the gap between two stocks — "the same stocks, at a random hour".
+    seed: 42
   always_quiet:
     # The constant every hour is scored. The VALUE is arbitrary by
     # construction: a constant ranker is uninformative at any level, so
