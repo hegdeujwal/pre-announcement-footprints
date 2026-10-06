@@ -720,6 +720,14 @@ eval:
   # resolution to see miscalibration, few enough that each bin holds sample.
   calibration_bins: 10
   t0_variants: [filing, news_adjusted]   # report both, and the gap between them
+  # Within-stock AUC (src/eval/within_stock.py, added 2026-10-06): ranks each
+  # stock's pre-filing bars only against that stock's own quiet bars, so stock
+  # selection cannot earn credit. The interval bootstraps STOCKS, because one
+  # stock's windows are not independent draws.
+  within_stock:
+    bootstrap: 1000
+    seed: 0
+    ci: 0.95
 
 split:
   train: 0.70
