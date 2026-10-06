@@ -737,6 +737,14 @@ eval:
     bootstrap: 1000
     seed: 0
     ci: 0.95
+  # Live alerts against chance (src/eval/live_vs_chance.py, added 2026-10-06).
+  # random_hours: draws per alert for the same-stock-random-hour control. The
+  # bootstrap resamples DAYS, since one stock often alerts for hours running.
+  live_vs_chance:
+    random_hours: 30
+    bootstrap: 2000
+    seed: 0
+    ci: 0.95
 
 split:
   train: 0.70
