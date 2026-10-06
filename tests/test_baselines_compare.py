@@ -247,6 +247,8 @@ def test_main_prints_the_scheduled_unscheduled_split_not_only_the_pooled_row(
     monkeypatch.setattr(compare, "split_bounds", lambda *a, **k: (0, 1))
     monkeypatch.setattr(compare, "build_eval_frame", lambda *a, **k: frame)
     monkeypatch.setattr(compare, "train_positives", lambda cfg: frame)
+    monkeypatch.setattr(compare, "build_training_frame",
+                        lambda cfg, conn, ratio=None: frame)
     monkeypatch.setattr(sys, "argv",
                         ["compare", "--variant", "news_adjusted", "--skip-gb"])
 

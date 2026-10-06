@@ -504,6 +504,15 @@ baselines:
     # companies alone. Ties within a stock are broken by seeded jitter smaller
     # than the gap between two stocks — "the same stocks, at a random hour".
     seed: 42
+  prior_volume:
+    # Which stock AND which hour (added 2026-10-06): log(train episodes of the
+    # stock + alpha) + the binned log likelihood ratio of the hour's volume_z,
+    # both fitted on the train split only. Set before validation was read and
+    # not tuned on it: alpha = 1 is add-one smoothing, 20 equal-mass bins
+    # resolve the spike tail without leaving bins empty.
+    alpha: 1.0
+    n_bins: 20
+    seed: 42
   always_quiet:
     # The constant every hour is scored. The VALUE is arbitrary by
     # construction: a constant ranker is uninformative at any level, so

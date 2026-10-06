@@ -34,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.baselines.always_quiet import AlwaysQuiet
+from src.baselines.prior_volume import PriorVolume
 from src.baselines.random_noise import RandomNoise
 from src.baselines.ticker_prior import TickerPrior
 from src.baselines.cusum import CUSUM
@@ -157,6 +158,7 @@ def noise_seeds(cfg: dict) -> list[int]:
 def run_baselines(cfg: dict, conn, frame: pd.DataFrame,
                   skip_gb: bool = False,
                   fitted_gb: "GradientBoosting | None" = None,
+                  fitted_pv: "PriorVolume | None" = None,
                   policy_runs: list[str] | None = None,
                   sampling_ratio: int | None = None
                   ) -> tuple[dict[str, pd.DataFrame], dict[str, object]]:
@@ -194,6 +196,24 @@ def run_baselines(cfg: dict, conn, frame: pd.DataFrame,
     # detector that does not clearly beat this row is mostly picking
     # filing-prone companies. See `ticker_prior.py`.
     models.append(TickerPrior(cfg).fit(train_positives(cfg), conn=conn))
+
+    # Gradient boosting and the combined detector both learn from the sampled
+    # train frame. It is built at most once per call and shared, so the two
+    # are fitted on the same draw.
+    train_frame = None
+
+    def training_frame() -> pd.DataFrame:
+        nonlocal train_frame
+        if train_frame is None:
+            ratio = sampling_ratio or cfg["sampling"]["negatives_per_positive"]
+            print(f"  building the train frame ({ratio}:1 negatives)...")
+            train_frame = build_training_frame(cfg, conn, ratio=sampling_ratio)
+        return train_frame
+
+    # Which stock AND which hour — see `prior_volume.py`. A fitted model can be
+    # passed back in, like gradient boosting, so a variant sweep fits once.
+    pv = fitted_pv or PriorVolume(cfg).fit(training_frame(), conn=conn)
+    models.append(pv)
     if not skip_gb:
         # The training frame does not depend on which t0 variant labels the
         # EVALUATION set, so a caller sweeping variants fits once and passes
@@ -201,11 +221,8 @@ def run_baselines(cfg: dict, conn, frame: pd.DataFrame,
         gb = fitted_gb
         if gb is None:
             gb = GradientBoosting(cfg)
-            ratio = sampling_ratio or cfg["sampling"]["negatives_per_positive"]
-            print(f"  fitting gradient boosting on the train split "
-                  f"({ratio}:1 negatives)...")
-            gb.fit(build_training_frame(cfg, conn, ratio=sampling_ratio),
-                   conn=conn)
+            print("  fitting gradient boosting on the train split...")
+            gb.fit(training_frame(), conn=conn)
         models.append(gb)
 
     named: list[tuple[str, object]] = [(m.name, m) for m in models]
@@ -337,16 +354,20 @@ def main() -> None:
     variants = [args.variant] if args.variant else list(T0_COLUMNS)
 
     started = time.time()
-    tables, gb = [], None
+    tables, gb, pv = [], None, None
     for variant in variants:
         print(f"\n=== t0 variant: {variant} ({args.split}) ===")
         frame = conform(build_eval_frame(cfg, conn, lo, hi, t0_variant=variant))
-        if gb is None and not args.skip_gb:
-            gb = GradientBoosting(cfg)
-            print("  fitting gradient boosting on the train split...")
-            gb.fit(build_training_frame(cfg, conn), conn=conn)
+        if pv is None:
+            # One train draw for both learners, fitted once for every variant.
+            train = build_training_frame(cfg, conn, ratio=args.sampling_ratio)
+            pv = PriorVolume(cfg).fit(train, conn=conn)
+            if not args.skip_gb:
+                gb = GradientBoosting(cfg)
+                print("  fitting gradient boosting on the train split...")
+                gb.fit(train, conn=conn)
         predictions, models = run_baselines(
-            cfg, conn, frame, skip_gb=args.skip_gb, fitted_gb=gb,
+            cfg, conn, frame, skip_gb=args.skip_gb, fitted_gb=gb, fitted_pv=pv,
             policy_runs=args.policy_runs,
             sampling_ratio=args.sampling_ratio)
         table = comparison_table(cfg, predictions, variant, models=models)
