@@ -592,8 +592,8 @@ def retime_filings(cfg: dict, conn, client=None,
     a correction of a vendor field, and `acceptance_source` records which
     rows it touched. The study window is out of reach by construction: it
     is frozen, its test set is spent, and a check of every event filing
-    against its header found its times right but for a small set recorded
-    in the progress tracker.
+    against its header found 0.84% stored 4-5 hours early and none late
+    (see the note on `live.retime_from` in config).
 
     `limit` caps one run's requests (`live.retime_batch`); what is left is
     picked up next run.

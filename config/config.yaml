@@ -703,6 +703,14 @@ live:
   # an in-universe company accepted on or after `retime_from` is re-timed
   # from its own header, at most `retime_batch` per run. The date is the
   # study window's end: nothing inside the frozen study is rewritten.
+  #
+  # The study window itself was checked, not assumed (2026-10-07): all 16,842
+  # event filings against their headers — 16,700 exact, 142 (0.84%) stored
+  # 4-5 h EARLY, none late. 54 of the 6,778 usable events are among them (25
+  # unscheduled; 14 in the test set). Early is the conservative direction: the
+  # window ends before the true event, so nothing reads past it, and those
+  # lead times are understated by up to 5 h. Left as is — the study is frozen
+  # and its test set spent — and reported as a limitation.
   retime_from: "2026-08-01"
   retime_batch: 5000
   # How many of the most recent STORED sessions each run fetches again, and
