@@ -75,7 +75,6 @@ coming" scores 99.7%. The headline metric is precision at a fixed alert budget
 │   ├── raw/edgar/             # cached EDGAR JSON responses (gitignored)
 │   ├── db/footprints.db       # SQLite: companies, filings, events, bars, news, meta
 │   ├── processed/             # events.parquet + feature matrices
-│   └── archive/               # the old Reddit database (gitignored)
 ├── src/
 │   ├── collectors/            # edgar, market, news
 │   ├── pipeline/              # universe, coverage, t0, events, materiality,
@@ -88,7 +87,6 @@ coming" scores 99.7%. The headline metric is precision at a fixed alert budget
 ├── app/                       # Streamlit dashboard — every alert shows its reasons
 ├── scripts/                   # browse any generated dataset; build the CI bootstrap DB
 ├── .github/workflows/         # live-monitor.yml — the scheduled same-day run
-├── archive/                   # the abandoned Reddit approach, kept for the report
 ├── tests/                     # pytest — leakage tests are mandatory
 └── implementation_plan.md     # the authoritative plan — read first
 ```
@@ -145,4 +143,3 @@ pytest
 - `docs/project-ideas-review.pdf` — the five-direction review this project came from
 - `docs/context.md` — corrections and additions to that review; where they
   disagree, `context.md` wins
-- [`archive/README.md`](archive/README.md) — what the Reddit approach was and why it was dropped

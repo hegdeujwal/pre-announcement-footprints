@@ -72,8 +72,6 @@ work from. To recreate it, ask.
 - SQLite schema lives in `src/db.py`. Writes are idempotent upserts — re-running
   any collector must never duplicate rows.
 - Raw API payloads are archived under `data/raw/` (gitignored) before parsing.
-- `archive/` holds the abandoned Reddit approach. It is kept for the report.
-  **Nothing in `src/` may import from it**, and `pytest.ini` excludes it.
 - Python ≥3.10, standard library `sqlite3` (no ORM), type hints on public
   functions.
 

@@ -2,8 +2,7 @@
 
 **Project Code 31 · NMAM Institute of Technology · Dept. of ISE**
 
-This is the authoritative plan. It supersedes the Reddit-based plan, which is
-kept at [`archive/implementation_plan_reddit.md`](archive/implementation_plan_reddit.md).
+This is the authoritative plan.
 
 Source material: `docs/project-ideas-review.pdf` (Idea 1) and `docs/context.md`.
 **Where those two disagree, `context.md` wins** — its corrections are folded in
