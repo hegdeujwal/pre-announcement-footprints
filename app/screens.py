@@ -123,6 +123,10 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
     split = data.split_hit_rates(view)
     resolved = split["resolved"]
     hours = data.window_hours()
+    # Alerts on known-bad bars stay listed but feed no figure here: a 101×
+    # "strongest" read off a day of inflated volumes is the data, not a stock.
+    bad = int(view["incident"].sum()) if "incident" in view else 0
+    view = data.counted(view)
     strongest = view.apply(
         lambda r: ui.strength(r["score"], r["threshold"], r["detector"])[2], axis=1).max() \
         if not view.empty else float("nan")
@@ -134,9 +138,12 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
     c = st.columns(5)
     # No `delta` here: Streamlit renders one with a directional arrow, and an
     # arrow beside "of N logged" reads as a trend when it is a denominator.
-    c[0].metric(f"In view · of {ui.num(len(all_rows))}", ui.num(len(view)),
+    c[0].metric(f"In view · of {ui.num(len(all_rows))}", ui.num(len(view) + bad),
                 help="Alerts matching the filters above, out of every alert "
-                     "ever logged.")
+                     "ever logged."
+                     + (f" {ui.num(bad)} of them sit on bars inside a recorded "
+                        f"data incident and are left out of the other four "
+                        f"figures." if bad else ""))
     c[1].metric("Awaiting outcome", ui.num(open_n),
                 help=f"The {hours}-hour window (wall-clock) has not closed yet, "
                      f"so these cannot be graded. They are excluded from the "
@@ -221,9 +228,22 @@ def alerts_today() -> None:
                           "Window open", "Not scored"],
                          label_visibility="collapsed")
 
-    cutoff = {"Latest session": newest - (newest % DAY),
+    # "Latest session" means the newest session with at least one alert on
+    # sound bars. A session made entirely of incident rows is a queue of
+    # nothing to triage; it is still under "Last 7 days" and "All".
+    clean = data.counted(df)
+    latest = int(clean["ts_utc"].max()) if not clean.empty else newest
+    skipped = sorted({ui.short_utc(t)[:6] for t in
+                      df.loc[df["ts_utc"] >= latest - latest % DAY + DAY, "ts_utc"]})
+    cutoff = {"Latest session": latest - (latest % DAY),
               "Last 7 days": newest - 7 * DAY, "All": 0}[scope]
     view = df[df["ts_utc"] >= cutoff]
+    if scope == "Latest session":
+        view = view[view["ts_utc"] < cutoff + DAY]
+        if skipped:
+            ui.note(f"**Showing the newest session on sound bars.** Every alert "
+                    f"after it ({', '.join(skipped)}) sits inside a recorded "
+                    f"data incident; switch to *Last 7 days* to see them.")
     hidden = 0
     if new_only and "episode_start" in view:
         hidden = int((~view["episode_start"]).sum())
@@ -248,7 +268,9 @@ def alerts_today() -> None:
     # open the wrong alert the moment the two orders diverged.
     view = view.assign(_mult=view.apply(
         lambda r: ui.strength(r["score"], r["threshold"], r["detector"])[2], axis=1)
-    ).sort_values("_mult", ascending=False).reset_index(drop=True)
+    ).assign(_bad=view["incident"] if "incident" in view else False
+    ).sort_values(["_bad", "_mult"], ascending=[True, False]
+    ).reset_index(drop=True)
 
     table = pd.DataFrame([{
         "Ticker": r["ticker"],

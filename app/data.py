@@ -303,7 +303,7 @@ def coverage() -> dict:
                 "answerable": 0, "incident": 0}
     incident = int(df["incident"].sum()) if "incident" in df else 0
     logged = len(df)
-    df = _counted(df)
+    df = counted(df)
     state = df["outcome_state"]
     return {
         "logged": logged,
@@ -318,7 +318,7 @@ def coverage() -> dict:
     }
 
 
-def _counted(df: pd.DataFrame) -> pd.DataFrame:
+def counted(df: pd.DataFrame) -> pd.DataFrame:
     """Rows a rate may count: everything outside a recorded data incident."""
     return df[~df["incident"]] if "incident" in df else df
 
@@ -332,7 +332,7 @@ def hit_rate(df: pd.DataFrame) -> tuple[int, int, float | None]:
     """
     if df.empty or "filed" not in df:
         return 0, 0, None
-    df = _counted(df)
+    df = counted(df)
     resolved = df[df["filed"].notna()]
     if resolved.empty:
         return 0, 0, None
@@ -382,7 +382,7 @@ def split_hit_rates(df: pd.DataFrame) -> dict:
     # same columns `live_vs_chance` reads, so the two cannot disagree. A
     # routine filing (excluded items only) counts in neither slice. The two
     # slices can overlap, so they need not add up to the pooled rate.
-    graded = _counted(df)
+    graded = counted(df)
     graded = graded[graded["filed"].notna()]
     if "filed_unscheduled" in graded and graded["filed_unscheduled"].notna().all():
         sched = int(graded["filed_scheduled"].sum())
@@ -394,10 +394,11 @@ def split_hit_rates(df: pd.DataFrame) -> dict:
         return out
 
     codes = {str(c) for c in config()["items"]["scheduled"]}
-    hits = _counted(df)
+    hits = counted(df)
     hits = hits[hits["filed"] == 1]
-    scheduled = int(hits["item_code"].map(
-        lambda c: _is_scheduled(c, codes)).sum())
+    # Summed as Python bools: on an empty frame pandas' `.sum()` of the
+    # mapped string column returns '' rather than 0.
+    scheduled = sum(bool(_is_scheduled(c, codes)) for c in hits["item_code"])
     out.update(scheduled=scheduled, scheduled_rate=scheduled / resolved,
                unscheduled=filed - scheduled,
                unscheduled_rate=(filed - scheduled) / resolved)
@@ -555,15 +556,15 @@ def budget_line(df: pd.DataFrame) -> dict:
         # horizon, per detector — the repeats inside an episode are not new
         # spend — and outside any recorded data incident. Per detector, so
         # the allowance is what EACH detector may spend.
-        counted = (ts.dt.to_period("M") == month)
+        in_month = (ts.dt.to_period("M") == month)
         if "incident" in df:
-            counted &= ~df["incident"]
+            in_month &= ~df["incident"]
         starts = df["episode_start"] if "episode_start" in df else True
-        per_detector = df[counted & starts].groupby("detector").size()
+        per_detector = df[in_month & starts].groupby("detector").size()
         spend = {str(k): int(v) for k, v in per_detector.items()}
         used = max(spend.values()) if spend else 0
         busiest = max(spend, key=spend.get) if spend else None
-        repeats = int((counted & ~starts).sum()) if "episode_start" in df else 0
+        repeats = int((in_month & ~starts).sum()) if "episode_start" in df else 0
     return {"rate": rate, "universe": n_universe, "allowance": allowance,
             "used": used, "busiest": busiest, "per_detector": spend,
             "repeats": repeats,

@@ -418,3 +418,29 @@ def test_the_news_ablation_reads_the_corrected_frame_with_its_noise_floor():
     at = _run("Evaluation")
     tables = [d.value for d in at.dataframe if "lift with news" in d.value.columns]
     assert tables and "random noise" in tables[0].columns
+
+
+def test_incident_alerts_feed_no_triage_figure_and_open_no_session():
+    """A day of inflated volumes once filled the whole "Latest session" queue
+    and set "Strongest" to 101x. Incident rows stay in the log, but the
+    latest session is the newest one on sound bars, and the summary figures
+    count only rows outside an incident."""
+    from app import data, ui
+
+    df = data.alerts_with_outcomes()
+    if "incident" not in df or not df["incident"].any():
+        pytest.skip("no recorded incident in this log")
+    clean = df[~df["incident"]]
+    at = _run("Today's alerts")
+    table = at.dataframe[0].value
+    # An incident can be defined by when alerts were raised, so a few may sit
+    # in a sound session; they are listed, labelled, and below every sound row.
+    bad = (table["Outcome"] == "Data incident — not counted").to_numpy()
+    assert not bad.all()
+    assert not (bad[:-1] & ~bad[1:]).any(), "an incident row sorts above a sound one"
+    strongest = next(m for m in at.metric if m.label == "Strongest").value
+    top = clean.apply(lambda r: ui.strength(r["score"], r["threshold"],
+                                            r["detector"])[2], axis=1)
+    newest = clean["ts_utc"].max()
+    in_session = clean["ts_utc"] >= newest - newest % 86400
+    assert float(strongest.rstrip("×")) <= top[in_session].max() + 0.05
