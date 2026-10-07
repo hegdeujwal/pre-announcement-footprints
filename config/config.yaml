@@ -675,6 +675,31 @@ live:
     - run: models/live/p6-r2-s43
       threshold: 0.994017
       sha256: 4ad490cdad03403e5ce2600e5ea948f6ebdb44a28f25632d8e39be0b226fc6a0
+  # How many of the most recent STORED sessions each run fetches again, and
+  # lets the fresh copy overwrite. Yahoo's intraday volumes for a session can
+  # be wrong when first served and corrected later: on 2026-10-07 the run
+  # stored 2026-10-06 bars at 3-20x their real volume (QQQ 14:30Z logged
+  # volume_z 20.1; Yahoo's corrected bar gives -0.3), and because the monitor
+  # only ever appended, the bad bars would have sat in every later baseline
+  # for 480 bars. Restating the previous session costs nothing extra — each
+  # ticker is one request whatever its range — and the frozen snapshot is
+  # never inside it (the monitor's sessions all post-date the stamp).
+  restate_sessions: 1
+  # Sanity check run on every session a fetch touched, before anything is
+  # scored: the hourly bars' volume summed over a session, against the same
+  # vendor's DAILY bar. Healthy, the hourly sum is the smaller (the daily bar
+  # also holds the auctions and off-grid prints): over 150 tickers x 20
+  # sessions it sat at a median 0.78, 99th percentile 1.00, 99.9th 1.50. A
+  # session above `max_hourly_to_daily` is removed from `bars` and recorded
+  # in `bar_quarantine` rather than scored; the next run's restate fetches it
+  # again. It catches the gross cases (QQQ's 2026-10-06 bars summed to ~8x
+  # its day) and not a single inflated hour inside an otherwise normal day —
+  # restating is what repairs those.
+  volume_check:
+    max_hourly_to_daily: 1.5
+    # Daily bars requested per batch. One yfinance call per chunk, not per
+    # ticker, so the check adds a handful of requests to a 1,500-ticker run.
+    chunk: 200
 
 # ------------------------------------------------------------
 # Reinforcement learning (Phase 6) — the stopping policy

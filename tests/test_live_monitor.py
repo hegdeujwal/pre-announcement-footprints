@@ -47,6 +47,9 @@ def conn(tmp_path, cfg):
 
     db.upsert_companies(c, [{"cik": "C1", "ticker": "AAA", "in_universe": 1},
                             {"cik": "C2", "ticker": "BBB", "in_universe": 1}])
+    # The freeze stamp sits at the start of these bars, as the real one sits
+    # before every live bar; the restate must never reach behind it.
+    db.set_meta(c, f"snapshot_frozen_{iv}", "2025-09-01 00:00:00Z", start)
     return c
 
 
@@ -231,12 +234,47 @@ def test_latest_stored_bar_finds_the_newest(cfg, conn):
 
 
 def test_fetch_is_a_noop_when_nothing_is_missing(cfg, conn):
-    """Starting from the newest stored bar means the freeze guard's
-    `requested_start_ts < stamp_ts` check never trips."""
+    """With restating off, a fetch at the newest bar has nothing to do."""
     from src.live.monitor import fetch_latest
 
+    off = {**cfg, "live": {**cfg["live"], "restate_sessions": 0}}
     newest = latest_stored_bar(conn, cfg["market"]["interval"])
-    assert fetch_latest(cfg, conn, tickers=["AAA"], now_ts=newest) == 0
+    assert fetch_latest(off, conn, tickers=["AAA"], now_ts=newest) == 0
+
+
+def test_the_latest_stored_session_is_fetched_again_and_overwritten(
+        cfg, conn, monkeypatch):
+    """Found 2026-10-07: a vendor correction never reached an append-only cache.
+
+    The run starts at the OPEN of the session holding the newest stored bar —
+    a whole session, never mid-bar — and passes `force` so `collect_ticker`
+    does not skip what it already holds.
+    """
+    from src.collectors import market
+    from src.live.monitor import fetch_latest
+    from src.utils.timeutils import session_open_before
+
+    calls = []
+
+    def spy(cfg_, conn_, tickers, start_ts, end_ts, iv, resume=False, force=False):
+        calls.append((tuple(tickers), start_ts, force))
+        return 0
+
+    monkeypatch.setattr(market, "collect_many", spy)
+    newest = latest_stored_bar(conn, cfg["market"]["interval"])
+    fetch_latest(cfg, conn, tickers=["AAA"], now_ts=newest + 10 * HOUR)
+
+    n = cfg["live"]["restate_sessions"]
+    assert calls[0] == (("AAA",), session_open_before(newest, n - 1), True)
+
+
+def test_a_restate_reaching_into_the_frozen_snapshot_is_refused(cfg, conn):
+    """The one-off repair may widen the restate, never past the stamp."""
+    from src.live.monitor import fetch_latest
+
+    with pytest.raises(SystemExit, match="frozen"):
+        fetch_latest(cfg, conn, tickers=["AAA"],
+                     restate_from=date_str_to_ts("2025-08-01"))
 
 
 def test_fetching_without_a_snapshot_is_refused(cfg, tmp_path):
@@ -316,7 +354,8 @@ def test_the_benchmark_is_fetched_even_though_it_is_not_in_the_universe(cfg, con
 
     bench_calls = [c for c in calls if c[0] == (benchmark,)]
     assert bench_calls, f"{benchmark} was never fetched; ret_rel_* would go NaN"
-    assert bench_calls[0][1] == bench_newest + 1, (
+    from src.live.monitor import restate_start
+    assert bench_calls[0][1] == restate_start(cfg, conn, bench_newest), (
         "the benchmark must resume from its own newest bar, or the gap between "
         "it and the universe is stepped over and never filled")
 
@@ -365,3 +404,71 @@ def test_the_policy_uses_its_budget_cut_not_its_own_half_rule(cfg):
     for entry in cfg["live"]["policies"]:
         assert cuts[policy_name(entry["run"])] == float(entry["threshold"])
         assert cuts[policy_name(entry["run"])] > 0.9
+
+
+# --------------------------------------------------------------------------
+# The session volume check (2026-10-07)
+# --------------------------------------------------------------------------
+def _session_bars(conn, cfg, ticker, day, volumes):
+    iv = cfg["market"]["interval"]
+    open_ = date_str_to_ts(day) + 13 * HOUR + 1800                 # 13:30Z
+    db.upsert_bars(conn, [(ticker, open_ + i * HOUR, 1, 1, 1, 1, float(v), iv)
+                          for i, v in enumerate(volumes)])
+    return open_
+
+
+def test_a_session_far_above_its_daily_total_is_quarantined(cfg, tmp_path):
+    """QQQ's 2026-10-06 hourly bars summed to ~8x its day; nothing scores them."""
+    from src.live.monitor import check_session_volumes
+
+    c = db.get_conn(tmp_path / "q.db")
+    since = _session_bars(c, cfg, "QQQ", "2026-10-06", [22e6, 62e6, 61e6, 26e6])
+    _session_bars(c, cfg, "AAA", "2026-10-06", [1e6, 1e6, 1e6, 1e6])
+    daily = pd.DataFrame({"QQQ": [24e6], "AAA": [5e6]}, index=["2026-10-06"])
+
+    out = check_session_volumes(cfg, c, since, now_ts=since + 10 * HOUR,
+                                daily=daily)
+
+    assert out["quarantined"] == 1 and out["rows"][0]["ticker"] == "QQQ"
+    left = dict(c.execute("SELECT ticker, COUNT(*) FROM bars GROUP BY ticker"))
+    assert "QQQ" not in left and left["AAA"] == 4
+    row = c.execute("SELECT session_date, bars_removed FROM bar_quarantine").fetchone()
+    assert tuple(row) == ("2026-10-06", 4)
+
+
+def test_a_session_with_no_daily_bar_is_left_alone_and_counted(cfg, tmp_path):
+    from src.live.monitor import check_session_volumes
+
+    c = db.get_conn(tmp_path / "u.db")
+    since = _session_bars(c, cfg, "AAA", "2026-10-06", [1e6, 1e6])
+    _session_bars(c, cfg, "BBB", "2026-10-06", [1e6, 1e6])
+    daily = pd.DataFrame({"BBB": [5e6]}, index=["2026-10-06"])
+    out = check_session_volumes(cfg, c, since, now_ts=since + 10 * HOUR,
+                                daily=daily)
+    assert out == {"sessions": 2, "quarantined": 0, "unverified": 1, "rows": []}
+
+
+def test_a_check_that_sees_no_daily_bars_at_all_fails_the_run(cfg, tmp_path):
+    """AGENTS rule 8: a blind check must not report a clean bill of health."""
+    from src.live.monitor import check_session_volumes
+
+    c = db.get_conn(tmp_path / "z.db")
+    since = _session_bars(c, cfg, "AAA", "2026-10-06", [1e6])
+    with pytest.raises(SystemExit, match="ZERO daily bars"):
+        check_session_volumes(cfg, c, since, now_ts=since + HOUR,
+                              daily=pd.DataFrame())
+
+
+def test_the_quarantine_record_survives_a_rebuilt_cache(cfg, tmp_path):
+    """Merged with the committed file, never replaced by a shorter one."""
+    from src.live.monitor import check_session_volumes, export_quarantine_csv
+
+    path = tmp_path / "quarantine.csv"
+    first = db.get_conn(tmp_path / "a.db")
+    since = _session_bars(first, cfg, "QQQ", "2026-10-06", [9e6, 9e6])
+    check_session_volumes(cfg, first, since, now_ts=since + 5 * HOUR,
+                          daily=pd.DataFrame({"QQQ": [1e6]}, index=["2026-10-06"]))
+    assert export_quarantine_csv(first, path) == 1
+
+    rebuilt = db.get_conn(tmp_path / "b.db")                 # knows nothing
+    assert export_quarantine_csv(rebuilt, path) == 1

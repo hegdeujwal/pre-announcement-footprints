@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 from src.utils.config import load_config
-from src.utils.timeutils import ts_to_iso, utc_now_ts
+from src.utils.timeutils import date_str_to_ts, ts_to_iso, utc_now_ts
 
 #: Where the durable log lives. Committed to the repository, because the
 #: database is a rebuildable cache and this is not.
@@ -53,11 +53,17 @@ DEFAULT_LOG_CSV = "live-log/alerts.csv"
 #: not just whatever its own database can grade.
 DEFAULT_OUTCOMES_CSV = "live-log/outcomes.csv"
 
+#: Sessions the volume check took out of `bars` instead of scoring. Committed
+#: for the same reason as the two files above: the database is a cache.
+DEFAULT_QUARANTINE_CSV = "live-log/quarantine.csv"
+
 
 def run(cfg: dict, conn, max_tickers: int | None = None,
         fetch: bool = True, log_csv: str | None = DEFAULT_LOG_CSV,
         as_of: int | None = None,
-        outcomes_csv: str | None = DEFAULT_OUTCOMES_CSV) -> dict:
+        outcomes_csv: str | None = DEFAULT_OUTCOMES_CSV,
+        quarantine_csv: str | None = DEFAULT_QUARANTINE_CSV,
+        restate_from: int | None = None) -> dict:
     """Fetch, scan, log, backfill outcomes, export. Returns a summary dict.
 
     Ordering matters. Outcomes are backfilled **after** the new alerts are
@@ -66,8 +72,10 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     CSV reflects everything this run learned.
     """
     from src.live.alertlog import append, export_csv, summary, verify_chain
-    from src.live.monitor import (build_detectors, conform, fetch_latest,
-                                  fetch_recent_filings, latest_bar_frame)
+    from src.live.monitor import (check_session_volumes, conform,
+                                  export_quarantine_csv, fetch_latest,
+                                  fetch_recent_filings, latest_bar_frame,
+                                  latest_stored_bar, restate_start)
     from src.live.outcomes import backfill, export_outcomes_csv
 
     started = time.time()
@@ -80,7 +88,18 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
             "ORDER BY ticker LIMIT ?", (max_tickers,))]
 
     if fetch:
-        result["bars_appended"] = fetch_latest(cfg, conn, tickers=tickers)
+        # Where the restate will begin, read BEFORE fetching: afterwards the
+        # newest bar has moved on and this would name the wrong session.
+        newest = latest_stored_bar(conn, cfg["market"]["interval"])
+        since = (restate_start(cfg, conn, newest, restate_from)
+                 if newest is not None else None)
+        result["bars_appended"] = fetch_latest(cfg, conn, tickers=tickers,
+                                               restate_from=restate_from)
+        # Before anything is scored: a session that fails is removed from
+        # `bars`, so neither its alerts nor its volumes reach the frame.
+        result["volume_check"] = (check_session_volumes(cfg, conn, since,
+                                                        tickers=tickers)
+                                  if since is not None else None)
         # Filings BEFORE the frame is built, for two separate reasons. One
         # feature — days_since_last_8k — reads this table, so a stale filings
         # table would score today's bars against yesterday's idea of when the
@@ -91,6 +110,7 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
         result["filings"] = fetch_recent_filings(cfg, conn, tickers=tickers)
     else:
         result["bars_appended"] = 0
+        result["volume_check"] = None
         result["filings"] = None
 
     frame = conform(latest_bar_frame(cfg, conn, tickers, as_of=as_of))
@@ -116,6 +136,9 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     if outcomes_csv:
         result["exported_outcomes"] = export_outcomes_csv(conn, outcomes_csv)
         result["outcomes_csv"] = str(outcomes_csv)
+    if quarantine_csv:
+        result["exported_quarantine"] = export_quarantine_csv(conn, quarantine_csv)
+        result["quarantine_csv"] = str(quarantine_csv)
 
     result["elapsed_s"] = round(time.time() - started, 1)
     return result
@@ -128,6 +151,18 @@ def scan_alerts(cfg: dict, conn, frame):
     return scan(cfg, conn, frame, build_detectors(cfg, policy_runs=runs))
 
 
+def _volume_line(check: dict | None) -> str:
+    if not check:
+        return "volume check  : skipped (nothing fetched)"
+    line = (f"volume check  : {check['sessions']:,} sessions, "
+            f"{check['quarantined']} quarantined, "
+            f"{check['unverified']} unverifiable (no daily bar)")
+    if check["rows"]:
+        line += "\n                " + ", ".join(
+            f"{r['ticker']} {r['session']} ({r['ratio']}x)" for r in check["rows"][:20])
+    return line
+
+
 def render(result: dict) -> str:
     """A summary an unattended run can be read from, days later."""
     f = result.get("filings")
@@ -137,6 +172,7 @@ def render(result: dict) -> str:
          f"records across {f['companies']:,} companies"
          + (f", {f['failed']} failed" if f["failed"] else "")
          if f else "filings       : skipped (--no-fetch)"),
+        _volume_line(result.get("volume_check")),
         f"bars scored   : {result['bars_scored']:,} "
         f"across {result['tickers']:,} tickers",
         f"newest bar    : {ts_to_iso(result['newest_bar_utc'])}",
@@ -157,6 +193,9 @@ def render(result: dict) -> str:
     if "exported_outcomes" in result:
         lines.append(f"              : {result['exported_outcomes']:,} outcomes "
                      f"-> {result['outcomes_csv']}")
+    if "exported_quarantine" in result:
+        lines.append(f"              : {result['exported_quarantine']:,} quarantined "
+                     f"sessions -> {result['quarantine_csv']}")
     lines.append(f"elapsed       : {result['elapsed_s']}s")
     return "\n".join(lines)
 
@@ -173,14 +212,22 @@ def main() -> None:
                     help="where to export the durable log")
     ap.add_argument("--outcomes-csv", default=DEFAULT_OUTCOMES_CSV,
                     help="where to export the log's graded outcomes")
+    ap.add_argument("--quarantine-csv", default=DEFAULT_QUARANTINE_CSV,
+                    help="where to export the volume check's quarantine record")
     ap.add_argument("--as-of", type=int, default=None)
+    ap.add_argument("--restate-from", default=None, metavar="YYYY-MM-DD",
+                    help="one-off repair: re-fetch and overwrite every live bar "
+                         "from this UTC date (never before the snapshot stamp)")
     args = ap.parse_args()
 
     cfg = load_config()
     conn = db.get_conn(cfg["paths"]["db"])
     result = run(cfg, conn, max_tickers=args.max_tickers,
                  fetch=not args.no_fetch, log_csv=args.log_csv,
-                 as_of=args.as_of, outcomes_csv=args.outcomes_csv)
+                 as_of=args.as_of, outcomes_csv=args.outcomes_csv,
+                 quarantine_csv=args.quarantine_csv,
+                 restate_from=(date_str_to_ts(args.restate_from)
+                               if args.restate_from else None))
     print(render(result))
 
     # A broken chain is the one condition that must fail the job rather than

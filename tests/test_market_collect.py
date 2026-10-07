@@ -589,3 +589,21 @@ def test_a_bar_starting_before_the_window_is_never_stored(cfg, tmp_path,
     assert vol[held] == 5_000_000.0, "the stored closing bar was overwritten"
     assert vol[held + 18 * 3600] == 700_000.0
 
+
+def test_daily_volumes_are_indexed_by_session_date(cfg):
+    """One batched call per chunk, flattened to (session date x ticker)."""
+    calls = []
+
+    def fake_download(tickers, **kw):
+        calls.append(list(tickers))
+        idx = pd.DatetimeIndex(["2026-10-05", "2026-10-06"]).tz_localize(
+            "America/New_York")
+        cols = pd.MultiIndex.from_product([["Volume", "Close"], tickers])
+        return pd.DataFrame(1.0, index=idx, columns=cols)
+
+    small = {**cfg, "live": {**cfg["live"], "volume_check": {
+        **cfg["live"]["volume_check"], "chunk": 2}}}
+    out = market.daily_volumes(small, ["A", "B", "C"], 0, 1, downloader=fake_download)
+    assert calls == [["A", "B"], ["C"]]
+    assert list(out.index) == ["2026-10-05", "2026-10-06"]
+    assert sorted(out.columns) == ["A", "B", "C"]

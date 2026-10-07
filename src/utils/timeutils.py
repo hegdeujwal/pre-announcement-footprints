@@ -285,3 +285,49 @@ def trading_hours_between(start_ts: int | float, end_ts: int | float,
     overlap = np.clip(np.minimum(closes, float(end_ts))
                       - np.maximum(opens, float(start_ts)), 0.0, None)
     return float(overlap.sum()) / 3600.0
+
+
+def bar_positions(ts, bar_seconds: int,
+                  calendar: xc.ExchangeCalendar | None = None) -> np.ndarray:
+    """Each bar start's position on the exchange's bar grid, as an integer.
+
+    Bars exist only while the market is open, so "48 bars later" is neither 48
+    wall-clock hours nor 48 trading hours: an XNYS session is 6.5 hours and
+    yields SEVEN hourly bars, the last one a half hour. This counts the grid
+    the way the bars table does — each session contributes
+    `ceil((close - open) / bar_seconds)` positions, numbered on from the
+    session before — so the difference of two positions is the number of bars
+    between them, which is what `decision.horizon_hours` counts.
+
+    A timestamp outside every session raises: a bar there does not exist, and
+    rounding it into a neighbour would quietly miscount the gap.
+    """
+    cal = calendar or get_market_calendar()
+    opens, closes = _session_bounds(cal.name)
+    per_session = -(-(closes - opens) // int(bar_seconds))      # ceil division
+    first = np.concatenate(([0], np.cumsum(per_session)[:-1]))
+    stamps = np.asarray(ts, dtype="int64")
+    session = np.searchsorted(opens, stamps, side="right") - 1
+    inside = (session >= 0) & (stamps < closes[np.clip(session, 0, None)])
+    if not inside.all():
+        bad = stamps[~inside][0]
+        raise ValueError(
+            f"{ts_to_iso(int(bad))} is outside every {cal.name} session — no bar "
+            f"starts there, so it has no position on the bar grid.")
+    return first[session] + (stamps - opens[session]) // int(bar_seconds)
+
+
+def session_open_before(ts: int | float, sessions_back: int = 0,
+                        calendar: xc.ExchangeCalendar | None = None) -> int:
+    """Open of the session holding `ts`, or of one `sessions_back` before it.
+
+    A `ts` between sessions belongs to the session that last opened. Used to
+    restate whole sessions: a fetch that starts mid-session gets back the bar
+    that CONTAINS its start, truncated to the part after it.
+    """
+    cal = calendar or get_market_calendar()
+    opens, _ = _session_bounds(cal.name)
+    i = int(np.searchsorted(opens, int(ts), side="right")) - 1 - int(sessions_back)
+    if i < 0:
+        raise _out_of_range(cal, pd.Timestamp(int(ts), unit="s", tz="UTC"))
+    return int(opens[i])

@@ -45,7 +45,7 @@ from src.pipeline.features import (_event_times, _news_arrays, _ticker_frame,
                                    ticker_features)
 from src.pipeline.split import LIVE, split_of
 from src.utils.config import load_config
-from src.utils.timeutils import ts_to_iso, utc_now_ts
+from src.utils.timeutils import session_open_before, ts_to_iso, utc_now_ts
 
 #: Columns the contract needs on a live frame. There is no t0 — that is the
 #: whole point: nobody knows yet whether news is coming, which is why the label
@@ -266,33 +266,64 @@ def latest_stored_bar(conn, interval: str, ticker: str | None = None) -> int | N
     return None if row is None or row[0] is None else int(row[0])
 
 
+def restate_start(cfg: dict, conn, newest_ts: int,
+                  restate_from: int | None = None) -> int:
+    """Where this run's fetch begins: the open of the oldest session restated.
+
+    `live.restate_sessions` whole sessions, counted back from the one holding
+    the newest stored bar, are fetched again and overwrite what is stored —
+    the vendor corrects intraday volumes after first serving them, and a
+    monitor that only appends keeps the first, wrong, copy for ever. A whole
+    session, from its open, because a fetch that starts mid-bar gets the
+    containing bar back truncated (see `market.collect_ticker`).
+
+    `restate_from` widens that for a one-off repair. Neither may reach back
+    past the frozen snapshot's stamp: `assert_not_frozen` refuses it, loudly,
+    because restating those bars would change numbers already reported.
+    """
+    from src.collectors import market
+
+    interval = cfg["market"]["interval"]
+    n = int((cfg.get("live") or {}).get("restate_sessions", 0))
+    start = (session_open_before(newest_ts, n - 1) if n > 0 else newest_ts + 1)
+    if restate_from is not None:
+        start = min(start, int(restate_from))
+    market.assert_not_frozen(cfg, conn, interval, start)
+    return start
+
+
 def fetch_latest(cfg: dict, conn, tickers: list[str] | None = None,
-                 now_ts: int | None = None) -> int:
-    """Append bars newer than what is stored. Never re-downloads.
+                 now_ts: int | None = None,
+                 restate_from: int | None = None) -> int:
+    """Fetch bars newer than what is stored, restating the latest session(s).
 
     The P3-06 freeze refuses a re-download because yfinance restates history
     after splits, which would silently change bars already used in results.
-    Appends are explicitly allowed, and `market.py`'s guard names this monitor
-    as the reason it is written that way — it starts from the newest stored
-    bar, so `assert_not_frozen`'s `requested_start_ts < stamp_ts` check never
-    trips.
+    Live bars are not part of any result until the monitor scores them, so
+    the most recent stored session is fetched again on every run
+    (`restate_start`) and anything older stays as stored. `assert_not_frozen`
+    still guards the boundary: a restate that would reach into the frozen
+    snapshot stops the run.
     """
     from src.collectors import market
 
     interval = cfg["market"]["interval"]
     now_ts = int(now_ts if now_ts is not None else utc_now_ts())
-    start = latest_stored_bar(conn, interval)
-    if start is None:
+    newest = latest_stored_bar(conn, interval)
+    if newest is None:
         raise SystemExit(
             "no bars stored at all — run the Phase 3 collector before the "
             "monitor; this appends to a snapshot, it does not create one.")
+    start = restate_start(cfg, conn, newest, restate_from) - 1
     if tickers is None:
         tickers = [r[0] for r in conn.execute(
             "SELECT ticker FROM companies WHERE in_universe = 1 ORDER BY ticker")]
 
-    # +1 second: the stored bar is already held, and `collect_many` refuses an
-    # empty or inverted range rather than treating it as a silent no-op.
-    # `resume=False` is load-bearing, not a default left alone. `collect_many`
+    # `start` is one second before the first bar wanted; `start + 1` is that
+    # bar. `force=True` is what makes the restate happen: without it
+    # `collect_ticker` sees the start inside its cached range and skips ahead
+    # to the newest stored bar, which is the append-only behaviour this
+    # replaced. `resume=False` is load-bearing, not a default left alone. `collect_many`
     # skips every ticker whose `fetch_state` row says "ok", and that row is
     # keyed on the ticker ALONE — it carries no window. Under `resume=True` the
     # first run to populate `fetch_state` would make every later run skip every
@@ -304,7 +335,7 @@ def fetch_latest(cfg: dict, conn, tickers: list[str] | None = None,
     fetched = 0
     if start + 1 < now_ts:
         fetched += market.collect_many(cfg, conn, tickers, start + 1, now_ts,
-                                       interval, resume=False)
+                                       interval, resume=False, force=True)
 
     # The benchmark is fetched separately, from ITS own newest bar. It is not
     # `in_universe`, so it is absent from the list above; left out, every
@@ -313,12 +344,120 @@ def fetch_latest(cfg: dict, conn, tickers: list[str] | None = None,
     # this fix. Its own start closes the gap that had already opened.
     benchmark = cfg["market"]["benchmark"]
     if benchmark not in set(tickers):
-        bench_start = latest_stored_bar(conn, interval, ticker=benchmark)
-        if bench_start is not None and bench_start + 1 < now_ts:
-            fetched += market.collect_many(cfg, conn, [benchmark],
-                                           bench_start + 1, now_ts,
-                                           interval, resume=False)
+        bench_newest = latest_stored_bar(conn, interval, ticker=benchmark)
+        if bench_newest is not None:
+            bench_start = restate_start(cfg, conn, bench_newest, restate_from)
+            if bench_start < now_ts:
+                fetched += market.collect_many(cfg, conn, [benchmark],
+                                               bench_start, now_ts, interval,
+                                               resume=False, force=True)
     return fetched
+
+
+def check_session_volumes(cfg: dict, conn, since_ts: int,
+                          now_ts: int | None = None,
+                          tickers: list[str] | None = None,
+                          daily: pd.DataFrame | None = None) -> dict:
+    """Quarantine sessions whose hourly bars contradict the daily total.
+
+    Run on every session the fetch touched, before scoring, so a bad session
+    raises no alerts at all. For each (ticker, session) the stored hourly
+    volumes are summed and divided by the vendor's daily volume for the same
+    session; above `live.volume_check.max_hourly_to_daily` the session's
+    hourly bars are DELETED from `bars` and a row goes to `bar_quarantine`.
+    Deleted rather than flagged, because every later bar's 480-bar baseline
+    would otherwise carry the bad volumes; and `fetch_latest`'s restate
+    fetches the session again next run, when it is checked again.
+
+    A session Yahoo has no daily bar for cannot be checked and is left alone,
+    counted as `unverified`. Zero daily bars across every ticker means the
+    check itself is blind, and that fails the run (AGENTS rule 8) rather than
+    reporting a clean bill of health.
+
+    `daily` is injectable for tests; production fetches it.
+    """
+    from src.collectors import market
+    from src.utils.timeutils import get_market_calendar
+
+    interval = cfg["market"]["interval"]
+    limit = float(cfg["live"]["volume_check"]["max_hourly_to_daily"])
+    now_ts = int(now_ts if now_ts is not None else utc_now_ts())
+    sql = ("SELECT ticker, ts_utc, volume FROM bars "
+           "WHERE interval = ? AND ts_utc >= ? AND ts_utc <= ?")
+    params: list = [interval, int(since_ts), now_ts]
+    if tickers:
+        sql += f" AND ticker IN ({','.join('?' * len(tickers))})"
+        params += list(tickers)
+    hourly = pd.read_sql(sql, conn, params=params)
+    result = {"sessions": 0, "quarantined": 0, "unverified": 0, "rows": []}
+    if hourly.empty:
+        return result
+
+    tz = get_market_calendar(cfg["market"]["calendar"]).tz
+    hourly["session"] = (pd.to_datetime(hourly["ts_utc"], unit="s", utc=True)
+                         .dt.tz_convert(tz).dt.strftime("%Y-%m-%d"))
+    sums = hourly.groupby(["ticker", "session"])["volume"].sum()
+    result["sessions"] = int(len(sums))
+
+    if daily is None:
+        daily = market.daily_volumes(cfg, sorted(hourly["ticker"].unique()),
+                                     int(since_ts), now_ts + 86400)
+    if daily.empty:
+        raise SystemExit(
+            f"volume check: Yahoo returned ZERO daily bars for "
+            f"{hourly['ticker'].nunique():,} tickers — the hourly bars just "
+            f"fetched cannot be checked, so nothing is scored on them.")
+
+    detected = utc_now_ts()
+    for (ticker, session), hsum in sums.items():
+        dvol = (daily.at[session, ticker]
+                if session in daily.index and ticker in daily.columns else None)
+        if dvol is None or pd.isna(dvol) or dvol <= 0:
+            result["unverified"] += 1
+            continue
+        ratio = float(hsum) / float(dvol)
+        if ratio <= limit:
+            continue
+        stamps = hourly.loc[(hourly["ticker"] == ticker) &
+                            (hourly["session"] == session), "ts_utc"].tolist()
+        conn.executemany("DELETE FROM bars WHERE ticker = ? AND interval = ? "
+                         "AND ts_utc = ?", [(ticker, interval, int(t)) for t in stamps])
+        conn.execute(
+            "INSERT OR REPLACE INTO bar_quarantine (ticker, interval, "
+            "session_date, hourly_volume, daily_volume, ratio, bars_removed, "
+            "detected_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (ticker, interval, session, float(hsum), float(dvol), ratio,
+             len(stamps), detected))
+        result["quarantined"] += 1
+        result["rows"].append({"ticker": ticker, "session": session,
+                               "ratio": round(ratio, 2)})
+        log.warning("volume check: %s %s hourly sum %.0f is %.1fx the daily "
+                    "%.0f — %d bars quarantined", ticker, session, hsum,
+                    ratio, dvol, len(stamps))
+    conn.commit()
+    return result
+
+
+def export_quarantine_csv(conn, path) -> int:
+    """Write `bar_quarantine` to `path`. The database is a cache; this is not.
+
+    Merged with what the file already holds, keyed on (ticker, interval,
+    session_date), so a rebuilt cache that has forgotten an old quarantine
+    does not erase its record.
+    """
+    from pathlib import Path
+
+    path = Path(path)
+    cols = ["ticker", "interval", "session_date", "hourly_volume",
+            "daily_volume", "ratio", "bars_removed", "detected_utc"]
+    now = pd.read_sql(f"SELECT {', '.join(cols)} FROM bar_quarantine", conn)
+    if path.exists():
+        now = pd.concat([pd.read_csv(path), now], ignore_index=True)
+    now = (now.drop_duplicates(["ticker", "interval", "session_date"], keep="last")
+              .sort_values(["session_date", "ticker"]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now[cols].to_csv(path, index=False)
+    return int(len(now))
 
 
 def fetch_recent_filings(cfg: dict, conn, tickers: list[str] | None = None,
@@ -419,8 +558,14 @@ def main() -> None:
 
     if not args.dry_run:
         print("fetching the latest bars...")
+        newest = latest_stored_bar(conn, cfg["market"]["interval"])
+        since = restate_start(cfg, conn, newest) if newest is not None else None
         rows = fetch_latest(cfg, conn)
         print(f"  appended {rows:,} bar rows")
+        if since is not None:
+            check = check_session_volumes(cfg, conn, since)
+            print(f"  volume check: {check['quarantined']} of "
+                  f"{check['sessions']:,} sessions quarantined")
 
     tickers = None
     if args.limit_tickers:

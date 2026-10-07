@@ -274,6 +274,45 @@ def collect_ticker(conn, ticker: str, start_ts: int, end_ts: int,
     return FetchResult(attempted=True, parsed=len(rows), written=n)
 
 
+def daily_volumes(cfg: dict, tickers: list[str], start_ts: int, end_ts: int,
+                  downloader=None) -> pd.DataFrame:
+    """The vendor's DAILY volume per (session date, ticker), batched.
+
+    Used by the live monitor to cross-check the hourly bars it has just
+    stored, so it is fetched fresh and never written to `bars` — the daily
+    snapshot is frozen, and this is a check, not data. `live.volume_check.
+    chunk` tickers go to one `yf.download` call, so a 1,500-ticker check is
+    a handful of requests rather than 1,500.
+
+    Index: exchange-local session date as 'YYYY-MM-DD'. A ticker Yahoo has no
+    daily bar for is simply absent or NaN; the caller decides what an
+    unverifiable session means.
+    """
+    download = downloader or yf.download
+    chunk = int(cfg["live"]["volume_check"]["chunk"])
+    frames = []
+    for i in range(0, len(tickers), chunk):
+        part = tickers[i:i + chunk]
+        got = download(part, start=ts_to_dt(start_ts), end=ts_to_dt(end_ts),
+                       interval=cfg["market"]["daily_interval"],
+                       auto_adjust=True, progress=False, threads=True,
+                       group_by="column")
+        if got is None or got.empty or "Volume" not in got:
+            continue
+        vol = got["Volume"]
+        if isinstance(vol, pd.Series):              # one ticker comes back flat
+            vol = vol.to_frame(part[0])
+        idx = pd.DatetimeIndex(vol.index)
+        if idx.tz is not None:
+            idx = idx.tz_localize(None)
+        vol.index = idx.strftime("%Y-%m-%d")
+        frames.append(vol)
+    if not frames:
+        return pd.DataFrame()
+    out = pd.concat(frames, axis=1)
+    return out.loc[:, ~out.columns.duplicated()]
+
+
 def collect_many(cfg: dict, conn, tickers: list[str], start_ts: int,
                  end_ts: int, interval: str, resume: bool = False,
                  force: bool = False) -> int:

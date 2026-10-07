@@ -193,6 +193,23 @@ CREATE TABLE IF NOT EXISTS alert_outcomes (
   t0_utc INTEGER,                -- the filing's t0, for lead-time arithmetic
   lead_trading_h REAL            -- trading hours from alert to t0
 );
+
+-- Live sessions whose hourly bars contradicted the vendor's own daily total
+-- and were taken out of `bars` rather than scored (live.volume_check). One row
+-- per (ticker, session), rewritten if the same session fails again on a
+-- later restate; exported beside the alert log so the record outlives the
+-- database cache.
+CREATE TABLE IF NOT EXISTS bar_quarantine (
+  ticker TEXT NOT NULL,
+  interval TEXT NOT NULL,
+  session_date TEXT NOT NULL,    -- exchange-local session date, YYYY-MM-DD
+  hourly_volume REAL NOT NULL,   -- sum of the stored hourly bars
+  daily_volume REAL NOT NULL,    -- the vendor's daily bar for that session
+  ratio REAL NOT NULL,
+  bars_removed INTEGER NOT NULL,
+  detected_utc INTEGER NOT NULL,
+  PRIMARY KEY (ticker, interval, session_date)
+);
 """
 
 
