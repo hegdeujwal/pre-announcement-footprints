@@ -160,3 +160,15 @@ def test_the_export_is_byte_stable(cfg, conn, tmp_path):
     export_csv(conn, a)
     export_csv(conn, b)
     assert a.read_bytes() == b.read_bytes()
+
+
+def test_a_run_while_the_market_is_open_is_refused(cfg, conn, tmp_path, monkeypatch):
+    """2026-10-07: a mid-session run scored bars Yahoo later settled to a
+    third of their volume. The schedule runs after the close."""
+    import sys
+    catchup = sys.modules["src.live.catchup"]   # src.live re-exports a name over it
+    monkeypatch.setattr(catchup, "is_market_open", lambda ts, cal=None: True)
+    with pytest.raises(SystemExit, match="market is open"):
+        catchup.run(cfg, conn, fetch=True, log_csv=str(tmp_path / "a.csv"),
+                    outcomes_csv=str(tmp_path / "o.csv"),
+                    quarantine_csv=str(tmp_path / "q.csv"))

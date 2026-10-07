@@ -124,7 +124,7 @@ def alerts() -> pd.DataFrame:
     for col in sorted({k for d in feats for k in d}):
         df[col] = feats.map(lambda d, c=col: d.get(c))
     df["episode_start"] = episode_starts(df)
-    df["incident"] = in_incident(config(), df["ts_utc"])
+    df["incident"] = in_incident(config(), df["ts_utc"], df["raised_utc"])
     return df.sort_values("ts_utc", ascending=False).reset_index(drop=True)
 
 
@@ -167,9 +167,8 @@ def episode_starts(df: pd.DataFrame) -> pd.Series:
 
 def incidents() -> list[dict]:
     """The recorded data incidents, for captions. From config, never retyped."""
-    from src.utils.timeutils import ts_to_iso
-    return [{"from": ts_to_iso(lo)[:10], "to": ts_to_iso(hi - 86400)[:10],
-             "reason": why} for lo, hi, why in incident_ranges(config())]
+    return [{"label": inc["label"], "reason": inc["reason"]}
+            for inc in incident_ranges(config())]
 
 
 @st.cache_data(ttl=300)

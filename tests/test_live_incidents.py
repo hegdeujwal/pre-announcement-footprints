@@ -74,13 +74,25 @@ def test_episodes_are_per_detector_and_per_stock():
 def test_the_configured_incident_covers_its_whole_day_and_nothing_else(cfg):
     stamps = [_bar("2026-10-05", 19.5), _bar("2026-10-06", 13.5),
               _bar("2026-10-06", 19.5), _bar("2026-10-07", 13.5)]
-    assert in_incident(cfg, stamps).tolist() == [False, True, True, False]
+    early = [s - 1 for s in stamps]                  # raised by no listed run
+    assert in_incident(cfg, stamps, early).tolist() == [False, True, True, False]
 
 
 def test_no_incidents_means_no_exclusion(cfg):
     clean = {**cfg, "live": {**cfg["live"], "data_incidents": []}}
     assert sql_exclusion(clean) == ("", [])
     assert not in_incident(clean, [_bar("2026-10-06", 13.5)]).any()
+
+
+def test_a_run_can_be_excluded_by_its_raise_time_whatever_its_bars(cfg):
+    """The 2026-10-07 repair run raised alerts on bars weeks old."""
+    from src.utils.timeutils import iso_utc_to_ts
+    run = iso_utc_to_ts("2026-10-07T19:36:04Z")
+    bars = [_bar("2026-08-24", 14.5), _bar("2026-10-07", 14.5)]
+    assert in_incident(cfg, bars, [run, run]).all()
+    assert not in_incident(cfg, bars, [run + 86400, run - 86400]).any()
+    with pytest.raises(ValueError, match="raise time"):
+        in_incident(cfg, bars)
 
 
 def test_hit_rates_leave_incident_alerts_out(cfg, tmp_path):
@@ -105,7 +117,8 @@ def test_dashboard_rates_and_budget_leave_incidents_and_repeats_out():
                        "ts_utc": ok + day, "filed": [1, 0, 0, 1, 1, 1],
                        "item_code": "8.01"})
     df["episode_start"] = data.episode_starts(df)
-    df["incident"] = in_incident(load_config(), df["ts_utc"])
+    df["raised_utc"] = df["ts_utc"] + 12 * HOUR
+    df["incident"] = in_incident(load_config(), df["ts_utc"], df["raised_utc"])
 
     resolved, filed, _ = data.hit_rate(df)
     assert (resolved, filed) == (3, 1)

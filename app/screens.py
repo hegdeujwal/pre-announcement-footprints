@@ -270,9 +270,8 @@ def alerts_today() -> None:
                   if hidden else ""))
     if "incident" in view and view["incident"].any():
         for inc in data.incidents():
-            ui.note(f"**Data incident, {inc['from']} to {inc['to']} — alerts on "
-                    f"these bars are shown but counted in no rate or budget.** "
-                    f"{inc['reason']}")
+            ui.note(f"**Data incident ({inc['label']}) — these alerts are shown "
+                    f"but counted in no rate or budget.** {inc['reason']}")
     picked = st.dataframe(
         table, width="stretch", hide_index=True, height=430,
         on_select="rerun", selection_mode="single-row",
@@ -340,9 +339,9 @@ def alerts_today() -> None:
                    "tickers to the full 1,500 on 2026-09-07, so flags per day "
                    "rises there by construction. A second, from 2026-09-25, is "
                    "the learned policy joining the two rules."
-                   + "".join(f" {i['from']} is a recorded data incident: the "
-                             f"bars were bad, not the market busy."
-                             for i in data.incidents()))
+                   + " Recorded data incidents — bad bars, not a busy "
+                   "market: " + "; ".join(i["label"] for i in data.incidents())
+                   + ".")
 
 
 def _alert_detail(r: pd.Series) -> None:
@@ -865,8 +864,8 @@ def monitor_log() -> None:
     ui.note(ui.honest_rate(split, hours))
 
     if cov.get("incident"):
-        reasons = " ".join(f"**{i['from']}" + (f" to {i['to']}" if i["to"] != i["from"] else "")
-                           + f":** {i['reason']}" for i in data.incidents())
+        reasons = " ".join(f"**{i['label']}:** {i['reason']}"
+                           for i in data.incidents())
         ui.note(f"**{cov['incident']:,} logged alerts sit on bars inside a "
                 f"recorded data incident and are left out of every rate on "
                 f"this screen.** They stay in the log, which is append-only "

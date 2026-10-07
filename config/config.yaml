@@ -745,6 +745,17 @@ live:
         that day's sampled volume_zscore alerts would not have fired on the
         corrected bars. Found 2026-10-07; restating and the volume check were
         added the same day.
+    - raised_from: "2026-10-07T19:36:04Z"
+      raised_to: "2026-10-07T19:36:04Z"
+      reason: >-
+        Every alert raised by the one-off repair run (dispatched by hand at
+        14:45 ET, while the market was open). 470 sit on 2026-10-07 bars
+        scored mid-session, when Yahoo served same-day hourly volumes up to 3x
+        their settled value (AAPL summed to 67M against a 20.7M day; 30
+        minutes later 22.0M): 21% of a checked sample would not fire on the
+        settled bars. The other 185 sit on bars from 2026-08-24 to 2026-10-06,
+        raised weeks late on restated data — after their outcome could be
+        known, so they are not forecasts.
 
 # ------------------------------------------------------------
 # Reinforcement learning (Phase 6) — the stopping policy

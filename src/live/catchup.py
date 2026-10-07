@@ -34,7 +34,8 @@ import time
 from pathlib import Path
 
 from src.utils.config import load_config
-from src.utils.timeutils import date_str_to_ts, ts_to_iso, utc_now_ts
+from src.utils.timeutils import (date_str_to_ts, get_market_calendar,
+                                 is_market_open, ts_to_iso, utc_now_ts)
 
 #: Where the durable log lives. Committed to the repository, because the
 #: database is a rebuildable cache and this is not.
@@ -63,7 +64,8 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
         as_of: int | None = None,
         outcomes_csv: str | None = DEFAULT_OUTCOMES_CSV,
         quarantine_csv: str | None = DEFAULT_QUARANTINE_CSV,
-        restate_from: int | None = None) -> dict:
+        restate_from: int | None = None,
+        allow_open_market: bool = False) -> dict:
     """Fetch, scan, log, backfill outcomes, export. Returns a summary dict.
 
     Ordering matters. Outcomes are backfilled **after** the new alerts are
@@ -81,6 +83,19 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
 
     started = time.time()
     result: dict = {"started_utc": utc_now_ts()}
+
+    # Same-day hourly volumes are not settled while the session runs: on
+    # 2026-10-07 a run dispatched at 14:45 ET got AAPL's bars summing to 67M
+    # shares against a 20.7M day, and 30 minutes later 22.0M. Scoring them
+    # writes alerts the settled bars would never raise, into a log that
+    # cannot be edited. The schedule runs after the close; a hand-dispatched
+    # run mid-session is refused unless it says it means it.
+    if fetch and not allow_open_market and is_market_open(
+            utc_now_ts(), get_market_calendar(cfg["market"]["calendar"])):
+        raise SystemExit(
+            "the market is open: today's hourly volumes are not settled, and "
+            "scoring them writes alerts the settled bars would not raise. Run "
+            "after the close, or pass --allow-open-market if you mean it.")
 
     tickers = None
     if max_tickers:
@@ -239,6 +254,8 @@ def main() -> None:
     ap.add_argument("--quarantine-csv", default=DEFAULT_QUARANTINE_CSV,
                     help="where to export the volume check's quarantine record")
     ap.add_argument("--as-of", type=int, default=None)
+    ap.add_argument("--allow-open-market", action="store_true",
+                    help="run even while the market is open (scores unsettled bars)")
     ap.add_argument("--restate-from", default=None, metavar="YYYY-MM-DD",
                     help="one-off repair: re-fetch and overwrite every live bar "
                          "from this UTC date (never before the snapshot stamp)")
@@ -251,7 +268,8 @@ def main() -> None:
                  as_of=args.as_of, outcomes_csv=args.outcomes_csv,
                  quarantine_csv=args.quarantine_csv,
                  restate_from=(date_str_to_ts(args.restate_from)
-                               if args.restate_from else None))
+                               if args.restate_from else None),
+                 allow_open_market=args.allow_open_market)
     print(render(result))
 
     # A broken chain is the one condition that must fail the job rather than

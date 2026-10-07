@@ -176,7 +176,7 @@ def load_inputs(cfg: dict, conn, alerts_csv: str):
     alerts = alerts[alerts["ts_utc"] + span <= horizon - lookback]
     # Bars scored on known-bad data (`live.data_incidents`) are in the log for
     # the record, never in a rate.
-    alerts = alerts[~in_incident(cfg, alerts["ts_utc"])]
+    alerts = alerts[~in_incident(cfg, alerts["ts_utc"], alerts["raised_utc"])]
     if alerts.empty:
         raise SystemExit("no alert has a closed outcome window yet — fetch "
                          "newer filings first (see live.monitor.fetch_recent_filings).")
