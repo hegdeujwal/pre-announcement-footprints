@@ -470,3 +470,18 @@ def test_an_empty_news_panel_after_collection_ended_is_called_a_gap():
     df = data.alerts_with_outcomes()
     if df["ts_utc"].max() > through:
         assert "a quiet stretch before a move" not in body.lower()
+
+
+def test_the_log_labels_incident_rows_and_the_top_line_skips_them():
+    """The repair run's mid-session bars headed the log with no label and set
+    the masthead's "newest scored bar"."""
+    from app import data, ui
+
+    df = data.alerts_with_outcomes()
+    if "incident" not in df or not df["incident"].any():
+        pytest.skip("no recorded incident in this log")
+    at = _run("Live monitor log")
+    log = next(d.value for d in at.dataframe if "outcome" in d.value.columns)
+    assert (log["outcome"] == "Data incident — not counted").sum() == int(df["incident"].sum())
+    sound = int(df.loc[~df["incident"], "ts_utc"].max())
+    assert ui.utc(sound).lower() in _text(at)

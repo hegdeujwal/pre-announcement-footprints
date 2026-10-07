@@ -64,14 +64,18 @@ def main() -> None:
     alerts = data.alerts()
     budget = data.budget_line(alerts)
     now = int(dt.datetime.now(dt.timezone.utc).timestamp())
-    newest = int(alerts["ts_utc"].max()) if not alerts.empty else None
+    # The newest bar on sound data: an incident's bars were scored, but they
+    # are not what the system currently knows about the market.
+    sound = data.counted(alerts)
+    newest = int(sound["ts_utc"].max()) if not sound.empty else None
 
     fn, blurb = SCREENS[page]
     ui.masthead(f"{page} — {blurb}")
     st.markdown(
         f'<div class="meta" style="margin:.45rem 0 .9rem 0">'
         f'{ui.utc(now)}'
-        + (f' &nbsp;·&nbsp; newest scored bar {ui.utc(newest)}' if newest else "")
+        + (f' &nbsp;·&nbsp; newest scored bar on sound data {ui.utc(newest)}'
+           if newest else "")
         + '</div>', unsafe_allow_html=True)
 
     # The screen's own headline row comes first: eye-tracking work is

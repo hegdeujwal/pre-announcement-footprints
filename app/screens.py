@@ -998,7 +998,11 @@ def monitor_log() -> None:
         "detector": df["detector"],
         "score": df["score"].map(lambda v: f"{v:.3f}"),
         "threshold": df["threshold"].map(lambda v: f"{v:.3f}"),
-        "outcome": df["outcome_state"].map(data.OUTCOME_WORDS),
+        # The log keeps incident rows (append-only) but says what they are,
+        # in the same words as the triage queue.
+        "outcome": df["outcome_state"].map(data.OUTCOME_WORDS).where(
+            ~df["incident"], "Data incident — not counted")
+        if "incident" in df else df["outcome_state"].map(data.OUTCOME_WORDS),
         # Rule 7 reaches the table too, not just the figures above it.
         "8-K type": data.outcome_slice(df),
         "lead (trading h)": df.get("lead_trading_h", pd.Series(index=df.index))
