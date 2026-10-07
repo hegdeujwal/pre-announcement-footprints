@@ -220,7 +220,9 @@ def budget_bar(b: dict) -> None:
                      "Fixed before any model existed, so it cannot have been "
                      "chosen to flatter a result.")
     c[1].metric(f"Spent in {b['month']}", num(b["used"]),
-                help=f"of {num(b['allowance'])} available this month")
+                help=f"of {num(b['allowance'])} available this month, by the "
+                     f"busiest detector ({b.get('busiest') or '—'}). New flags "
+                     f"only: a repeat inside an open episode is not new spend.")
     c[2].metric("Universe", num(b["universe"]),
                 help="Companies, selected once in advance by fixed liquidity "
                      "rules measured as of the study's start date.")
@@ -276,11 +278,17 @@ def budget_strip(b: dict) -> None:
     competing panels.
     """
     used, allow = b["used"], b["allowance"]
+    each = ", ".join(f"{k} {num(v)}" for k, v in sorted(b.get("per_detector", {}).items()))
     st.caption(
         f"**Alert budget** {b['rate']} / stock / month across "
-        f"{num(b['universe'])} companies — **{num(used)} of {num(allow)} "
-        f"spent in {b['month']}** ({pct(used / allow, 1) if allow else '—'} of "
-        f"the allowance). The budget is the operational constraint the whole "
+        f"{num(b['universe'])} companies, per detector — **{num(used)} of "
+        f"{num(allow)} spent in {b['month']}** by the busiest "
+        f"({pct(used / allow, 1) if allow else '—'} of the allowance"
+        + (f"; {each}" if each else "") + "). Counted as the budget is "
+        f"defined: one flag per stock per episode, so the "
+        f"{num(b.get('repeats', 0))} repeat rows inside open episodes are not "
+        f"new spend, and recorded data incidents are left out. "
+        f"The budget is the operational constraint the whole "
         f"system is tuned to, fixed before any model existed so it cannot have "
         f"been chosen to flatter a result; precision is measured at exactly it."
         + ("" if b["universe"] is not None else

@@ -179,6 +179,8 @@ def _volume_trend(df: pd.DataFrame) -> None:
     """
     if df.empty:
         return
+    if "episode_start" in df:
+        df = df[df["episode_start"]]
     day = pd.to_datetime(df["ts_utc"], unit="s", utc=True).dt.floor("D")
     counts = day.value_counts().sort_index()
     if len(counts) < 2:
@@ -198,10 +200,18 @@ def alerts_today() -> None:
         return
 
     newest = int(df["ts_utc"].max())
-    c1, c2, c3 = st.columns([2, 1, 1])
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
     with c1:
         scope = st.radio("Window", ["Latest session", "Last 7 days", "All"],
                          horizontal=True, label_visibility="collapsed")
+    # Default ON: a stock that stays elevated writes one alert per bar, and a
+    # queue of seven identical rows for one stock is not seven things to look
+    # at. The repeats are still in the log and one click away.
+    new_only = c4.toggle("New flags only", value=True,
+                         help="Hide repeat alerts on a stock already flagged by "
+                              "the same detector within its "
+                              f"{data.config()['decision']['horizon_hours']}-bar "
+                              "episode. Every repeat stays in the log.")
     which = c2.selectbox("Detector",
                          ["All detectors"] + sorted(df["detector"].unique()),
                          label_visibility="collapsed")
@@ -213,6 +223,10 @@ def alerts_today() -> None:
     cutoff = {"Latest session": newest - (newest % DAY),
               "Last 7 days": newest - 7 * DAY, "All": 0}[scope]
     view = df[df["ts_utc"] >= cutoff]
+    hidden = 0
+    if new_only and "episode_start" in view:
+        hidden = int((~view["episode_start"]).sum())
+        view = view[view["episode_start"]]
     if which != "All detectors":
         view = view[view["detector"] == which]
     if state != "All outcomes":
@@ -241,14 +255,23 @@ def alerts_today() -> None:
         "× thresh": round(r["_mult"], 1) if pd.notna(r["_mult"]) else None,
         "Detector": r["detector"],
         "Bar (UTC)": ui.short_utc(r["ts_utc"]),
-        "Outcome": _outcome(r)[1],
+        "Outcome": ("Data incident — not counted" if r.get("incident")
+                    else _outcome(r)[1]),
         # Rule 1: the reasons travel WITH the alert, never behind a click.
         "Why it fired": " · ".join(_reasons(r)),
     } for _, r in view.iterrows()])
 
     ui.section(f"{len(table):,} alerts",
                "Strongest first — a work queue, not an index. Click any column "
-               "to sort, or a row to open it below.")
+               "to sort, or a row to open it below."
+               + (f" {hidden:,} repeat alerts on stocks already flagged are "
+                  f"hidden; switch off *New flags only* to see them."
+                  if hidden else ""))
+    if "incident" in view and view["incident"].any():
+        for inc in data.incidents():
+            ui.note(f"**Data incident, {inc['from']} to {inc['to']} — alerts on "
+                    f"these bars are shown but counted in no rate or budget.** "
+                    f"{inc['reason']}")
     picked = st.dataframe(
         table, width="stretch", hide_index=True, height=430,
         on_select="rerun", selection_mode="single-row",
@@ -311,9 +334,14 @@ def alerts_today() -> None:
 
     with st.expander("Alert volume over time — is today unusual?"):
         _volume_trend(df)
-        st.caption("One step in this series is ours, not the market's: coverage "
-                   "widened from 400 tickers to the full 1,500 on 2026-09-07, "
-                   "so alerts per day rises there by construction.")
+        st.caption("New flags per day, repeats excluded. One step in this "
+                   "series is ours, not the market's: coverage widened from 400 "
+                   "tickers to the full 1,500 on 2026-09-07, so flags per day "
+                   "rises there by construction. A second, from 2026-09-25, is "
+                   "the learned policy joining the two rules."
+                   + "".join(f" {i['from']} is a recorded data incident: the "
+                             f"bars were bad, not the market busy."
+                             for i in data.incidents()))
 
 
 def _alert_detail(r: pd.Series) -> None:
@@ -791,6 +819,22 @@ def monitor_log() -> None:
             f"figure, which is exactly why the two are kept apart.")
 
     ui.note(ui.honest_rate(split, hours))
+
+    if cov.get("incident"):
+        reasons = " ".join(f"**{i['from']}" + (f" to {i['to']}" if i["to"] != i["from"] else "")
+                           + f":** {i['reason']}" for i in data.incidents())
+        ui.note(f"**{cov['incident']:,} logged alerts sit on bars inside a "
+                f"recorded data incident and are left out of every rate on "
+                f"this screen.** They stay in the log, which is append-only "
+                f"and hash-chained. {reasons}")
+    quarantined = data.quarantine()
+    if not quarantined.empty:
+        ui.note(f"**The volume check has quarantined {len(quarantined):,} "
+                f"stock-sessions** whose hourly volumes summed to more than "
+                f"{data.config()['live']['volume_check']['max_hourly_to_daily']}x "
+                f"the vendor's own daily total. Those bars were taken out "
+                f"before scoring, so they raised no alerts. Record: "
+                f"`live-log/quarantine.csv`.")
 
     if cov["unscored"]:
         ui.note(

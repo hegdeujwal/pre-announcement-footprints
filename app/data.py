@@ -18,11 +18,14 @@ import pandas as pd
 import streamlit as st
 
 from src import db
+from src.live.incidents import in_incident, incident_ranges
 from src.utils.config import load_config
+from src.utils.timeutils import bar_positions
 
 REPO = Path(__file__).resolve().parents[1]
 ALERT_LOG = REPO / "live-log" / "alerts.csv"
 OUTCOME_LOG = REPO / "live-log" / "outcomes.csv"
+QUARANTINE_LOG = REPO / "live-log" / "quarantine.csv"
 
 
 @st.cache_data(ttl=300)
@@ -120,7 +123,61 @@ def alerts() -> pd.DataFrame:
     feats = df["features"].map(lambda s: json.loads(s) if isinstance(s, str) else {})
     for col in sorted({k for d in feats for k in d}):
         df[col] = feats.map(lambda d, c=col: d.get(c))
+    df["episode_start"] = episode_starts(df)
+    df["incident"] = in_incident(config(), df["ts_utc"])
     return df.sort_values("ts_utc", ascending=False).reset_index(drop=True)
+
+
+def _bar_seconds(interval: str) -> int:
+    """'60m' -> 3600. The bar grid the horizon is counted on."""
+    units = {"m": 60, "h": 3600, "d": 86400}
+    return int(interval[:-1]) * units[interval[-1]]
+
+
+def episode_starts(df: pd.DataFrame) -> pd.Series:
+    """True where an alert opens a new episode; False for a repeat inside one.
+
+    The monitor logs every bar a detector fires on, so a stock that stays
+    elevated for a day writes seven alerts. The offline evaluation allows at
+    most ONE flag per `decision.horizon_hours`-bar window, and the alert
+    budget is counted the same way. So: per (detector, ticker), an alert
+    starts an episode, and the next `horizon` bars on that stock are repeats
+    of it; the first alert after that starts the next one. Bars, not hours —
+    a session is 6.5 hours and seven bars.
+
+    Measured 2026-10-07: 71% of the live log was repeats, which is how a
+    detector spending ~80 new flags a day looked like ~300 rows a day.
+    """
+    out = pd.Series(False, index=df.index)
+    if df.empty:
+        return out
+    cfg = config()
+    horizon = int(cfg["decision"]["horizon_hours"])
+    pos = pd.Series(bar_positions(df["ts_utc"].to_numpy(),
+                                  _bar_seconds(cfg["market"]["interval"])),
+                    index=df.index)
+    for _, idx in df.groupby(["detector", "ticker"]).groups.items():
+        last = None
+        for i in pos.loc[idx].sort_values().index:
+            if last is None or pos[i] - last >= horizon:
+                out[i] = True
+                last = pos[i]
+    return out
+
+
+def incidents() -> list[dict]:
+    """The recorded data incidents, for captions. From config, never retyped."""
+    from src.utils.timeutils import ts_to_iso
+    return [{"from": ts_to_iso(lo)[:10], "to": ts_to_iso(hi - 86400)[:10],
+             "reason": why} for lo, hi, why in incident_ranges(config())]
+
+
+@st.cache_data(ttl=300)
+def quarantine() -> pd.DataFrame:
+    """Sessions the live volume check removed instead of scoring."""
+    if not QUARANTINE_LOG.exists():
+        return pd.DataFrame()
+    return pd.read_csv(QUARANTINE_LOG)
 
 
 _OUTCOME_COLS = ["alert_id", "checked_utc", "filed", "accession_no",
@@ -241,10 +298,15 @@ def coverage() -> dict:
     df = alerts_with_outcomes()
     if df.empty:
         return {"logged": 0, "graded": 0, "open": 0, "unscored": 0,
-                "answerable": 0}
+                "answerable": 0, "incident": 0}
+    incident = int(df["incident"].sum()) if "incident" in df else 0
+    logged = len(df)
+    df = _counted(df)
     state = df["outcome_state"]
     return {
-        "logged": len(df),
+        "logged": logged,
+        # Logged, and kept in the log, but outside every rate below.
+        "incident": incident,
         "graded": int(state.isin(("filed", "none")).sum()),
         "open": int((state == "open").sum()),
         "unscored": int((state == "unscored").sum()),
@@ -252,6 +314,11 @@ def coverage() -> dict:
         # the hit rate WOULD have if this database held every outcome.
         "answerable": int((state != "open").sum()),
     }
+
+
+def _counted(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows a rate may count: everything outside a recorded data incident."""
+    return df[~df["incident"]] if "incident" in df else df
 
 
 def hit_rate(df: pd.DataFrame) -> tuple[int, int, float | None]:
@@ -263,6 +330,7 @@ def hit_rate(df: pd.DataFrame) -> tuple[int, int, float | None]:
     """
     if df.empty or "filed" not in df:
         return 0, 0, None
+    df = _counted(df)
     resolved = df[df["filed"].notna()]
     if resolved.empty:
         return 0, 0, None
@@ -308,7 +376,8 @@ def split_hit_rates(df: pd.DataFrame) -> dict:
         return out
 
     codes = {str(c) for c in config()["items"]["scheduled"]}
-    hits = df[df["filed"] == 1]
+    hits = _counted(df)
+    hits = hits[hits["filed"] == 1]
     scheduled = int(hits["item_code"].map(
         lambda c: _is_scheduled(c, codes)).sum())
     out.update(scheduled=scheduled, scheduled_rate=scheduled / resolved,
@@ -455,17 +524,32 @@ def budget_line(df: pd.DataFrame) -> dict:
     # that need the database render as "—" rather than as a fabricated zero.
     allowance = None if n_universe is None else int(rate * n_universe)
 
-    used = 0
-    month = None
+    used = repeats = 0
+    month = busiest = None
+    spend: dict = {}
     if not df.empty:
         # tz dropped explicitly rather than by pandas' warning: these are UTC
         # epoch seconds, so the calendar month IS the UTC month and there is
         # no local-time question to get wrong.
         ts = pd.to_datetime(df["ts_utc"], unit="s", utc=True).dt.tz_localize(None)
         month = ts.max().to_period("M")
-        used = int((ts.dt.to_period("M") == month).sum())
+        # Counted the way the budget is defined: one flag per stock per
+        # horizon, per detector — the repeats inside an episode are not new
+        # spend — and outside any recorded data incident. Per detector, so
+        # the allowance is what EACH detector may spend.
+        counted = (ts.dt.to_period("M") == month)
+        if "incident" in df:
+            counted &= ~df["incident"]
+        starts = df["episode_start"] if "episode_start" in df else True
+        per_detector = df[counted & starts].groupby("detector").size()
+        spend = {str(k): int(v) for k, v in per_detector.items()}
+        used = max(spend.values()) if spend else 0
+        busiest = max(spend, key=spend.get) if spend else None
+        repeats = int((counted & ~starts).sum()) if "episode_start" in df else 0
     return {"rate": rate, "universe": n_universe, "allowance": allowance,
-            "used": used, "month": str(month) if month is not None else "—"}
+            "used": used, "busiest": busiest, "per_detector": spend,
+            "repeats": repeats,
+            "month": str(month) if month is not None else "—"}
 
 
 # --------------------------------------------------------------------------
