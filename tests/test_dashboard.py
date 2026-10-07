@@ -444,3 +444,29 @@ def test_incident_alerts_feed_no_triage_figure_and_open_no_session():
     newest = clean["ts_utc"].max()
     in_session = clean["ts_utc"] >= newest - newest % 86400
     assert float(strongest.rstrip("×")) <= top[in_session].max() + 0.05
+
+
+def test_ticker_detail_lists_every_detector_on_a_shared_hour():
+    """The picker was keyed by hour, so when two detectors fired on the same
+    bar only one could be opened. It also opened on whichever ticker sorted
+    first; it now opens on the strongest recent alert on sound bars."""
+    from app import data
+
+    df = data.alerts_with_outcomes()
+    at = _run("Ticker detail")
+    ticker = at.selectbox[0].value
+    assert ticker != sorted(df["ticker"].unique())[0] or len(df) < 2
+    options = at.selectbox[1].options
+    assert len(options) == int((df["ticker"] == ticker).sum())
+
+
+def test_an_empty_news_panel_after_collection_ended_is_called_a_gap():
+    from app import data
+
+    through = data.news_through()
+    if through is None:
+        pytest.skip("no local news table")
+    body = _text(_run("Ticker detail"))
+    df = data.alerts_with_outcomes()
+    if df["ts_utc"].max() > through:
+        assert "a quiet stretch before a move" not in body.lower()

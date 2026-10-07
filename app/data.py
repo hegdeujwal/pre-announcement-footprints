@@ -602,6 +602,22 @@ def news(ticker: str, lo_utc: int, hi_utc: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300)
+def news_through() -> int | None:
+    """The newest article time held locally, or None.
+
+    News collection covered the study window and is off for the live monitor
+    (`features.include_news_coverage`), so a live alert's window can fall
+    after the last article on record. An empty panel there is a gap in the
+    data, not a quiet stretch, and the screen has to be able to tell which.
+    """
+    if not db_present():
+        return None
+    with _conn() as conn:
+        row = conn.execute("SELECT MAX(published_utc) FROM news").fetchone()
+    return int(row[0]) if row and row[0] is not None else None
+
+
+@st.cache_data(ttl=300)
 def filings(ticker: str, limit: int = 20) -> pd.DataFrame:
     cfg = config()
     if not db_present():

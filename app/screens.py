@@ -391,13 +391,31 @@ def ticker_detail() -> None:
         ui.note("No alerts to inspect yet.")
         return
 
+    # Open on something worth reading: the strongest rule alert of the newest
+    # session on sound bars, not whichever ticker sorts first alphabetically.
+    tickers = sorted(df["ticker"].unique())
+    first = None
+    clean = data.counted(df)
+    if not clean.empty:
+        newest = int(clean["ts_utc"].max())
+        recent = clean[clean["ts_utc"] >= newest - newest % DAY]
+        mult = recent.apply(lambda r: ui.strength(
+            r["score"], r["threshold"], r["detector"])[2], axis=1)
+        first = recent.loc[mult.fillna(-1).idxmax()]
     c1, c2 = st.columns([1, 2])
-    ticker = c1.selectbox("Ticker", sorted(df["ticker"].unique()))
+    ticker = c1.selectbox("Ticker", tickers, index=tickers.index(
+        first["ticker"]) if first is not None else 0)
     rows = df[df["ticker"] == ticker].sort_values("ts_utc", ascending=False)
-    label = {int(r.ts_utc): f"{ui.utc(r.ts_utc, False)} · {r.detector}"
+    # Keyed by alert, not by hour: two detectors often fire on the same bar,
+    # and an hour-keyed list kept only one of them.
+    label = {r.alert_id: f"{ui.utc(r.ts_utc, False)} · {r.detector}"
              for r in rows.itertuples()}
-    flagged = c2.selectbox("Flagged hour", list(label), format_func=label.get)
-    row = rows[rows["ts_utc"] == flagged].iloc[0]
+    ids = list(label)
+    pick = c2.selectbox("Flagged hour", ids, format_func=label.get,
+                        index=ids.index(first["alert_id"])
+                        if first is not None and first["alert_id"] in label else 0)
+    row = rows[rows["alert_id"] == pick].iloc[0]
+    flagged = int(row["ts_utc"])
 
     key, words, mult = ui.strength(row["score"], row["threshold"], row["detector"])
     state, _ = _outcome(row)
@@ -492,7 +510,16 @@ def ticker_detail() -> None:
                            "publisher. Some carry analyst language — that is "
                            "the outlet's wording, not this tool's.")
         n = data.news(ticker, lo, hi)
-        if n.empty:
+        through = data.news_through()
+        if n.empty and through is not None and hi > through:
+            # Past the last article on record, an empty panel is a gap in the
+            # data and must not be read as a quiet stretch.
+            st.caption(f"No articles on record for this window. News was "
+                       f"collected for the study window only — through "
+                       f"{ui.utc(through, False)} — and is off for the live "
+                       f"monitor, so this is a gap in the data, not a quiet "
+                       f"stretch.")
+        elif n.empty:
             st.caption("No articles in this window. A quiet stretch before a "
                        "move is the interesting shape, not a gap in the data — "
                        "every week of the study window was fetched for every "
