@@ -36,6 +36,26 @@
 # is a decision to take deliberately and record, not a free upgrade to take
 # because it is now free.
 #
+# DATA INCIDENT 2026-10-06 — READ THIS BEFORE ANALYSING THE ALERT LOG
+#
+# The run at 2026-10-07T00:51Z stored hourly bars for the 2026-10-06 session
+# with volumes 3-20x what Yahoo serves for the same bars now, and scored them:
+# 2,403 alerts against ~300 on a normal day, 60% of a checked sample not
+# firing on the corrected bars. The rows stay in the log (append-only,
+# hash-chained); config `live.data_incidents` names the day, and every live
+# rate, the chance comparison and the dashboard leave it out.
+#
+# Three changes landed with it, all in force from the next run:
+#   - each run RESTATES the most recent stored session (`live.restate_sessions`)
+#     instead of only appending, so a vendor correction reaches the database;
+#   - a session whose hourly volumes sum past `live.volume_check.
+#     max_hourly_to_daily` x the vendor's daily bar is removed before scoring
+#     and recorded in live-log/quarantine.csv;
+#   - a fetch no longer stores the bar CONTAINING its start. Every run before
+#     this one overwrote the previous session's closing bar with a truncated,
+#     zero-volume copy — so every closing hour the monitor appended was stored
+#     as zero until the one-off repair (`restate_from`) re-fetched them.
+#
 # DETECTOR CORRECTED 2026-09-11 — READ THIS BEFORE ANALYSING THE ALERT LOG
 #
 # The CUSUM parameters changed: `baselines.cusum.threshold` 1.0 -> 1.5. Alerts
@@ -123,6 +143,14 @@ on:
     # has settled before the run.
     - cron: "30 21 * * 1-5"
   workflow_dispatch:            # so it can be run by hand without waiting
+    inputs:
+      restate_from:
+        description: >-
+          One-off repair: re-fetch and overwrite every live bar from this UTC
+          date (YYYY-MM-DD). Never earlier than the snapshot stamp. Leave empty
+          for a normal run.
+        required: false
+        default: ""
 
 # Two runs writing the alert log at once would race on the commit.
 concurrency:
@@ -279,14 +307,22 @@ jobs:
           fi
 
       - name: Run the monitor
-        env:
-          PYTHONPATH: .
         # No --max-tickers: the whole 1,500-company universe is scanned. The
         # flag selected `ORDER BY ticker LIMIT 400`, which is not a sample of
         # the universe but its alphabetical head — every live alert before
         # 2026-09-07 comes from tickers A through DIOD. See the coverage note
         # in the header.
-        run: python -m src.live.catchup | tee run.log
+        # `restate_from` is set only on a hand-dispatched repair run; a
+        # scheduled run has no inputs and restates `live.restate_sessions`.
+        env:
+          PYTHONPATH: .
+          RESTATE_FROM: ${{ inputs.restate_from }}
+        run: |
+          if [ -n "${RESTATE_FROM}" ]; then
+            python -m src.live.catchup --restate-from "${RESTATE_FROM}" | tee run.log
+          else
+            python -m src.live.catchup | tee run.log
+          fi
 
       # REBASE BEFORE PUSHING, AND RETRY. A pass takes about 40 minutes, so the
       # branch this checked out is routinely stale by the time it finishes: any
@@ -319,6 +355,7 @@ jobs:
           # found, not only what its own database can grade.
           git add live-log/alerts.csv
           [ -f live-log/outcomes.csv ] && git add live-log/outcomes.csv
+          [ -f live-log/quarantine.csv ] && git add live-log/quarantine.csv
           if git diff --cached --quiet; then
             echo "no new alerts or outcomes to commit"
             exit 0

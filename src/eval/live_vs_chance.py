@@ -45,6 +45,8 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from src.live.incidents import in_incident
+
 #: Slices of "what followed", in reading order. AGENTS.md rule 7.
 KINDS = ("any", "scheduled", "unscheduled")
 
@@ -156,6 +158,9 @@ def load_inputs(cfg: dict, conn, alerts_csv: str):
 
     alerts = pd.read_csv(alerts_csv)
     alerts = alerts[alerts["ts_utc"] + span <= horizon - lookback]
+    # Bars scored on known-bad data (`live.data_incidents`) are in the log for
+    # the record, never in a rate.
+    alerts = alerts[~in_incident(cfg, alerts["ts_utc"])]
     if alerts.empty:
         raise SystemExit("no alert has a closed outcome window yet — fetch "
                          "newer filings first (see live.monitor.fetch_recent_filings).")

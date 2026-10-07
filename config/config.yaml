@@ -700,6 +700,21 @@ live:
     # Daily bars requested per batch. One yfinance call per chunk, not per
     # ticker, so the check adds a handful of requests to a 1,500-ticker run.
     chunk: 200
+  # Alert-log stretches known to have been scored on bad data. The rows stay
+  # in the log — it is append-only and hash-chained, and the record of what
+  # the monitor said is part of the evidence — but every live hit rate, the
+  # chance comparison and the dashboard's budget leave them out, and say so.
+  # Dates are bar dates (UTC), inclusive.
+  data_incidents:
+    - first_bar_date: "2026-10-06"
+      last_bar_date: "2026-10-06"
+      reason: >-
+        Yahoo served inflated hourly volumes for many tickers when the
+        2026-10-07T00:51Z run fetched the 2026-10-06 session (QQQ, DHI, PDI,
+        LEN, MDT checked: stored volume 3-20x the corrected figure). 60% of
+        that day's sampled volume_zscore alerts would not have fired on the
+        corrected bars. Found 2026-10-07; restating and the volume check were
+        added the same day.
 
 # ------------------------------------------------------------
 # Reinforcement learning (Phase 6) — the stopping policy

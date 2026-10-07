@@ -185,23 +185,29 @@ def _calendar(cfg: dict):
     return get_market_calendar(cfg["market"]["calendar"])
 
 
-def hit_rates(conn) -> dict:
+def hit_rates(conn, cfg: dict | None = None) -> dict:
     """Per detector: how many scored alerts were followed by a filing.
 
     This is the Phase 7 headline. `pending` is carried alongside so a reader
     can see how much of the log is still unanswerable rather than assuming the
-    scored part is all of it.
+    scored part is all of it. Alerts on bars inside a `live.data_incidents`
+    stretch are left out of every count (see `src.live.incidents`).
     """
+    from src.live.incidents import sql_exclusion
+
+    cut, params = sql_exclusion(cfg or load_config())
+    where = f"WHERE {cut} " if cut else ""
     rows = conn.execute(
         "SELECT a.detector, COUNT(*) n, SUM(o.filed) hits, "
         "       AVG(o.lead_trading_h) mean_lead "
         "FROM alerts a JOIN alert_outcomes o ON o.alert_id = a.alert_id "
-        "GROUP BY a.detector ORDER BY a.detector").fetchall()
+        f"{where}GROUP BY a.detector ORDER BY a.detector", params).fetchall()
 
     pending = {r["detector"]: int(r["n"]) for r in conn.execute(
         "SELECT a.detector, COUNT(*) n FROM alerts a "
         "LEFT JOIN alert_outcomes o ON o.alert_id = a.alert_id "
-        "WHERE o.alert_id IS NULL GROUP BY a.detector")}
+        f"WHERE o.alert_id IS NULL {'AND ' + cut if cut else ''} "
+        "GROUP BY a.detector", params)}
 
     out = {}
     for r in rows:
@@ -360,7 +366,7 @@ def main() -> None:
               f"window runs past the filing data horizon "
               f"({ts_to_iso(result['horizon_utc'])})")
 
-    rates = hit_rates(conn)
+    rates = hit_rates(conn, cfg)
     if not rates:
         print("\nnothing scored yet.")
         return
