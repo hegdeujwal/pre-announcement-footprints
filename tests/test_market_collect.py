@@ -207,7 +207,11 @@ def test_state_is_namespaced_by_interval(cfg, tmp_path, monkeypatch):
     assert db.completed_keys(conn, fetch_source("1d")) == set(TICKERS)
     assert db.completed_keys(conn, fetch_source("60m")) == set()
 
-    hourly = patch_yf(monkeypatch, FakeYF(data))
+    # Bars inside the window asked for: the collector stores nothing that
+    # starts before its start, as a real fetch never returns such bars except
+    # the truncated one containing the start.
+    hourly = patch_yf(monkeypatch, FakeYF(
+        {t: frame("2025-09-01", 10) for t in TICKERS}))
     run(cfg, conn, interval="60m", resume=True, start="2025-09-01")
     assert set(hourly.calls) == set(TICKERS)
 
@@ -554,3 +558,34 @@ def test_interval_rejects_an_unsupported_value(monkeypatch):
     )
     with pytest.raises(SystemExit):
         market.main()
+
+
+# --------------------------------------------------------------------------
+# the bar that CONTAINS the start (found 2026-10-07)
+# --------------------------------------------------------------------------
+def test_a_bar_starting_before_the_window_is_never_stored(cfg, tmp_path,
+                                                         monkeypatch):
+    """Yahoo answers a mid-bar start with the containing bar, truncated.
+
+    The live monitor asked for `last_bar + 1s` and got the last bar back with
+    a volume of zero; upserts overwrite, so every run zeroed the previous
+    session's closing hour. A bar that begins before the requested start was
+    not asked for and must not replace the one already stored.
+    """
+    conn = fresh_db(tmp_path, "boundary.db")
+    held = date_str_to_ts("2026-10-05") + 19 * 3600 + 1800        # 19:30Z
+    db.upsert_bars(conn, [("AAPL", held, 1, 1, 1, 1, 5_000_000.0, "60m")])
+
+    idx = pd.DatetimeIndex([pd.Timestamp(held, unit="s", tz="UTC"),
+                            pd.Timestamp(held + 18 * 3600, unit="s", tz="UTC")])
+    truncated = pd.DataFrame({"Open": [1.0, 2.0], "High": [1.0, 2.0],
+                              "Low": [1.0, 2.0], "Close": [1.0, 2.0],
+                              "Volume": [0, 700_000]}, index=idx)
+    patch_yf(monkeypatch, FakeYF({"AAPL": truncated}))
+    market.collect_ticker(conn, "AAPL", held + 1, held + 30 * 3600, "60m",
+                          force=True)
+
+    vol = dict(conn.execute("SELECT ts_utc, volume FROM bars WHERE ticker='AAPL'"))
+    assert vol[held] == 5_000_000.0, "the stored closing bar was overwritten"
+    assert vol[held + 18 * 3600] == 700_000.0
+

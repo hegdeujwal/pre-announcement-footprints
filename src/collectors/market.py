@@ -260,7 +260,14 @@ def collect_ticker(conn, ticker: str, start_ts: int, end_ts: int,
         start=ts_to_dt(start_ts), end=ts_to_dt(end_ts),
         interval=interval, auto_adjust=True,
     )
-    rows = df_to_rows(hist, ticker, interval)
+    # Only bars that START inside the requested window. Yahoo answers a start
+    # that falls mid-bar with the bar CONTAINING it, truncated to the part
+    # after the start — for the live monitor's `last_bar + 1s` that is the
+    # previous session's closing bar again, with a volume of zero. Upserts
+    # overwrite unconditionally, so every live run used to replace the closing
+    # hour it already held with that empty copy. Measured 2026-10-07: QQQ's
+    # 2026-10-05 15:30 ET bar comes back as 0 shares from `start=19:30:01Z`.
+    rows = [r for r in df_to_rows(hist, ticker, interval) if r[1] >= start_ts]
     n = db.upsert_bars(conn, rows)
     log.info("%s [%s]: %d bars upserted (%s -> %s)", ticker, interval,
              len(rows), ts_to_iso(start_ts), ts_to_iso(end_ts))
