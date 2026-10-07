@@ -380,3 +380,21 @@ def test_the_lift_caveat_is_not_applied_to_the_corrected_re_run():
     if "re-run once on 2026-09-10" in body:
         assert "not trustworthy" not in body
         assert "random_noise" in body, "the null must be named on screen"
+
+
+def test_a_fresh_clone_has_the_final_results_committed():
+    """`data/` is never committed, so the Evaluation screen used to be empty
+    on any machine but the author's. The tables it reads are exported to
+    `paths.results`, and each committed copy matches its manifest."""
+    import hashlib
+    from pathlib import Path
+
+    from src.utils.config import load_config
+
+    cfg = load_config()
+    root = Path(__file__).resolve().parents[1] / cfg["paths"]["results"]
+    manifest = (root / "MANIFEST.md").read_text()
+    for name in cfg["results_export"]:
+        body = (root / name).read_bytes()
+        assert hashlib.sha256(body).hexdigest() in manifest, name
+    assert "phase10/FINAL-test-evaluation-r2.csv" in cfg["results_export"]

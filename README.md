@@ -85,6 +85,8 @@ coming" scores 99.7%. The headline metric is precision at a fixed alert budget
 │   ├── eval/                  # precision @ alert budget, detection delay, Brier, ECE
 │   └── utils/                 # rate limiting, UTC + market-hours helpers, config
 ├── app/                       # Streamlit dashboard — every alert shows its reasons
+├── live-log/                  # COMMITTED: the live alert log, its grades, quarantined sessions
+├── results/                   # COMMITTED: the final result tables the dashboard reads
 ├── scripts/                   # browse any generated dataset; build the CI bootstrap DB
 ├── .github/workflows/         # live-monitor.yml — the scheduled same-day run
 ├── tests/                     # pytest — leakage tests are mandatory
@@ -107,6 +109,36 @@ gets scraped, and worse, anyone who forked the project would identify to the
 SEC as its author, so their rate-limit violations would land on that author.
 The config ships a placeholder and the EDGAR client refuses to make a live
 request while that placeholder is all it has.
+
+## Running the dashboard on a fresh clone
+
+Everything the dashboard needs to show the results is committed, so a teammate
+needs no database, no API key and no data download:
+
+```bash
+git clone https://github.com/hegdeujwal/pre-announcement-footprints.git
+cd pre-announcement-footprints && git checkout dev-new
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app/dashboard.py
+```
+
+| Screen | Reads | On a fresh clone |
+|---|---|---|
+| Today's alerts | `live-log/alerts.csv`, `live-log/outcomes.csv` | full |
+| Live monitor log | the same, plus `live-log/quarantine.csv` | full |
+| Evaluation | `results/` (Phase 10 test set, Phase 8 news pair) | full |
+| Ticker detail | the alert, plus price bars from the database | alert and its reasons; price panels empty |
+
+The price panels need the SQLite database, which is never committed (about
+1 GB). For them, download the slim copy attached to the `bootstrap-2026-09-07`
+release (`bootstrap.db.gz`, 31 MB, prices to 2026-09-07), gunzip it to
+`data/db/footprints.db`, and restart the dashboard. `git pull` picks up each
+night's alerts and grades, which the scheduled monitor commits.
+
+To refresh `results/` after rebuilding a table: `python scripts/export_results.py`
+copies the files listed under `results_export` in `config/config.yaml` and
+writes their checksums to `results/MANIFEST.md`.
 
 ## Running the collectors
 

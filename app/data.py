@@ -623,5 +623,15 @@ def filings(ticker: str, limit: int = 20) -> pd.DataFrame:
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=300)
 def comparison(name: str) -> pd.DataFrame:
-    path = Path(config()["paths"]["processed"]) / name
-    return pd.read_csv(path) if path.exists() else pd.DataFrame()
+    """A result table: the committed copy in `paths.results` first.
+
+    That copy is what a fresh clone has (`data/` is never committed); the
+    working file in `paths.processed` is the fallback, for a table built
+    locally and not yet exported. `scripts/export_results.py` keeps the two
+    byte-identical, checked against `results/MANIFEST.md`.
+    """
+    for root in (config()["paths"]["results"], config()["paths"]["processed"]):
+        path = REPO / root / name
+        if path.exists():
+            return pd.read_csv(path)
+    return pd.DataFrame()

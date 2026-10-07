@@ -38,6 +38,8 @@ tensorboard/
 
 # Logs
 *.log
+# ...except the final Phase 10 run log, committed with the results it explains.
+!results/**/*.log
 
 # OS / editor
 .DS_Store

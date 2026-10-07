@@ -8,6 +8,22 @@ paths:
   db: "data/db/footprints.db"
   edgar_raw: "data/raw/edgar"        # every EDGAR JSON response, cached forever
   processed: "data/processed"        # events.parquet + feature matrices
+  # The final result tables, COMMITTED. `data/` is never committed, so a fresh
+  # clone had an empty Evaluation screen; these few small files are what the
+  # dashboard reads, copied from `processed` by scripts/export_results.py with
+  # a checksum each. Same reasoning as live-log/: outside `data/` so the rule
+  # stays intact. The dashboard reads here first, then `processed`.
+  results: "results"
+
+# Files scripts/export_results.py copies from paths.processed into
+# paths.results — the ones the dashboard reads, and the run log and note
+# that say what the final numbers are. Paths are relative to `processed`.
+results_export:
+  - phase10/FINAL-test-evaluation-r2.csv
+  - phase10/FINAL-test-run-r2.log
+  - phase10/CORRECTION-NOTE.md
+  - p8-with-news-val.csv
+  - p8-without-news-val.csv
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps

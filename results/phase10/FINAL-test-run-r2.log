@@ -1,0 +1,183 @@
+
+=== t0 variant: news_adjusted (test) ===
+  evalset: 250/1500 tickers, 166 episodes + 52,851 bars
+  evalset: 500/1500 tickers, 320 episodes + 106,235 bars
+  evalset: 750/1500 tickers, 504 episodes + 158,477 bars
+  evalset: 1000/1500 tickers, 681 episodes + 211,000 bars
+  evalset: 1250/1500 tickers, 857 episodes + 263,365 bars
+  evalset: 1500/1500 tickers, 1,011 episodes + 316,187 bars
+evalset: 1,011 positive episodes + 316,187 quiet bars = 317,198 windows, base rate 0.3187%
+  fitting gradient boosting on the train split...
+
+-- slice: all --
+         baseline    t0_variant  precision  max_precision    lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+            cusum news_adjusted    0.03135        0.16861 9.83729 0.18595               17.34111      5996       False               NaN
+    volume_zscore news_adjusted    0.03102        0.16861 9.73264 0.18398               14.50000      5996       False               NaN
+   rl_policy[s43] news_adjusted    0.02918        0.16858 9.15553 0.17310               14.50000      5997       False           0.99977
+gradient_boosting news_adjusted    0.00700        0.16861 2.19769 0.04154               36.50000      5996       False               NaN
+   rl_policy[s46] news_adjusted    0.00434        0.16861 1.36048 0.02572               38.00000      5996       False           0.99951
+ random_noise[45] news_adjusted    0.00400        0.16861 1.25582 0.02374               26.50000      5996       False               NaN
+ random_noise[44] news_adjusted    0.00350        0.16861 1.09885 0.02077               27.50000      5996       False               NaN
+     always_quiet news_adjusted    0.00319        0.00319 1.00000 1.00000               44.50000    317198        True               NaN
+ random_noise[43] news_adjusted    0.00300        0.16861 0.94187 0.01780               27.71583      5996       False               NaN
+ random_noise[46] news_adjusted    0.00284        0.16861 0.88954 0.01682               27.50000      5996       False               NaN
+ random_noise[42] news_adjusted    0.00250        0.16861 0.78489 0.01484               26.50000      5996       False               NaN
+   rl_policy[s45] news_adjusted    0.00250        0.16861 0.78489 0.01484               41.50000      5996       False           0.99999
+   rl_policy[s44] news_adjusted    0.00067        0.16839 0.20903 0.00396               36.00000      6004       False           0.95284
+   rl_policy[s42] news_adjusted    0.00000        0.16856 0.00000 0.00000               36.00000      5998       False           0.88861
+
+-- slice: scheduled --
+         baseline    t0_variant  precision  max_precision     lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+    volume_zscore news_adjusted    0.02271        0.08209 14.73587 0.27664               11.25111      5945       False               NaN
+            cusum news_adjusted    0.02255        0.08213 14.63410 0.27459               12.00000      5942       False               NaN
+   rl_policy[s43] news_adjusted    0.02052        0.08210 13.31910 0.25000               13.00000      5944       False           0.99975
+gradient_boosting news_adjusted    0.00235        0.08177  1.52228 0.02869               20.72514      5968       False               NaN
+ random_noise[45] news_adjusted    0.00201        0.08155  1.30132 0.02459               27.50000      5984       False               NaN
+ random_noise[42] news_adjusted    0.00184        0.08144  1.19128 0.02254               27.50000      5992       False               NaN
+ random_noise[44] news_adjusted    0.00167        0.08154  1.08425 0.02049               26.50000      5985       False               NaN
+     always_quiet news_adjusted    0.00154        0.00154  1.00000 1.00000               44.50000    316675        True               NaN
+   rl_policy[s46] news_adjusted    0.00134        0.08163  0.86842 0.01639               36.74472      5978       False           0.99951
+ random_noise[43] news_adjusted    0.00134        0.08152  0.86726 0.01639               27.60792      5986       False               NaN
+ random_noise[46] news_adjusted    0.00134        0.08151  0.86711 0.01639               28.50000      5987       False               NaN
+   rl_policy[s45] news_adjusted    0.00017        0.08158  0.10848 0.00205               43.36472      5982       False           0.99999
+   rl_policy[s42] news_adjusted    0.00000        0.08136  0.00000 0.00000               38.00000      5998       False           0.88894
+   rl_policy[s44] news_adjusted    0.00000        0.08133  0.00000 0.00000               37.00000      6000       False           0.95329
+
+-- slice: unscheduled --
+         baseline    t0_variant  precision  max_precision    lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+            cusum news_adjusted    0.00921        0.08922 5.57838 0.10325               21.73625      5862       False               NaN
+   rl_policy[s43] news_adjusted    0.00902        0.08902 5.46296 0.10134               20.00000      5875       False           0.99975
+    volume_zscore news_adjusted    0.00870        0.08923 5.26937 0.09751               20.00000      5861       False               NaN
+gradient_boosting news_adjusted    0.00468        0.08743 2.83447 0.05354               38.50000      5982       False               NaN
+   rl_policy[s46] news_adjusted    0.00301        0.08734 1.82033 0.03442               41.50000      5988       False           0.99948
+   rl_policy[s45] news_adjusted    0.00234        0.08724 1.41416 0.02677               39.00000      5995       False           0.99999
+ random_noise[45] news_adjusted    0.00201        0.08740 1.21437 0.02294               26.50000      5984       False               NaN
+ random_noise[44] news_adjusted    0.00184        0.08737 1.11280 0.02103               28.50000      5986       False               NaN
+ random_noise[43] news_adjusted    0.00167        0.08734 1.01130 0.01912               28.30028      5988       False               NaN
+     always_quiet news_adjusted    0.00165        0.00165 1.00000 1.00000               44.50000    316710        True               NaN
+ random_noise[46] news_adjusted    0.00150        0.08734 0.91017 0.01721               27.08917      5988       False               NaN
+ random_noise[42] news_adjusted    0.00067        0.08739 0.40472 0.00765               26.00000      5985       False               NaN
+   rl_policy[s44] news_adjusted    0.00067        0.08711 0.40344 0.00765               30.50000      6004       False           0.95298
+   rl_policy[s42] news_adjusted    0.00000        0.08720 0.00000 0.00000               33.10833      5998       False           0.88909
+
+=== t0 variant: filing (test) ===
+  evalset: 250/1500 tickers, 166 episodes + 52,851 bars
+  evalset: 500/1500 tickers, 320 episodes + 106,231 bars
+  evalset: 750/1500 tickers, 504 episodes + 158,465 bars
+  evalset: 1000/1500 tickers, 681 episodes + 210,987 bars
+  evalset: 1250/1500 tickers, 857 episodes + 263,347 bars
+  evalset: 1500/1500 tickers, 1,011 episodes + 316,168 bars
+evalset: 1,011 positive episodes + 316,168 quiet bars = 317,179 windows, base rate 0.3187%
+
+-- slice: all --
+         baseline t0_variant  precision  max_precision     lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+            cusum     filing    0.03452        0.16861 10.83084 0.20475               15.00000      5996       False               NaN
+    volume_zscore     filing    0.03419        0.16861 10.72619 0.20277               13.50000      5996       False               NaN
+   rl_policy[s43]     filing    0.03286        0.16861 10.30761 0.19486               13.50000      5996       False           0.99977
+gradient_boosting     filing    0.00684        0.16861  2.14524 0.04055               37.00000      5996       False               NaN
+ random_noise[45]     filing    0.00450        0.16861  1.41272 0.02671               26.00000      5996       False               NaN
+ random_noise[42]     filing    0.00384        0.16861  1.20343 0.02275               26.00000      5996       False               NaN
+   rl_policy[s46]     filing    0.00367        0.16861  1.15110 0.02176               38.00000      5996       False           0.99951
+ random_noise[46]     filing    0.00367        0.16861  1.15110 0.02176               28.50000      5996       False               NaN
+ random_noise[43]     filing    0.00350        0.16861  1.09878 0.02077               28.50000      5996       False               NaN
+ random_noise[44]     filing    0.00334        0.16861  1.04646 0.01978               27.50000      5996       False               NaN
+     always_quiet     filing    0.00319        0.00319  1.00000 1.00000               44.50000    317179        True               NaN
+   rl_policy[s45]     filing    0.00250        0.16861  0.78484 0.01484               41.50000      5996       False           0.99999
+   rl_policy[s44]     filing    0.00067        0.16836  0.20898 0.00396               36.00000      6005       False           0.95283
+   rl_policy[s42]     filing    0.00000        0.16861  0.00000 0.00000               36.00000      5996       False           0.88859
+
+-- slice: scheduled --
+         baseline t0_variant  precision  max_precision     lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+    volume_zscore     filing    0.02574        0.08210 16.70246 0.31352               11.00000      5944       False               NaN
+            cusum     filing    0.02542        0.08215 16.49523 0.30943               13.00000      5940       False               NaN
+   rl_policy[s43]     filing    0.02390        0.08214 15.50946 0.29098               13.00000      5941       False           0.99975
+gradient_boosting     filing    0.00218        0.08177  1.41346 0.02664               21.75000      5968       False               NaN
+ random_noise[43]     filing    0.00200        0.08151  1.30059 0.02459               28.50000      5987       False               NaN
+ random_noise[45]     filing    0.00184        0.08161  1.19360 0.02254               26.00000      5980       False               NaN
+ random_noise[42]     filing    0.00184        0.08155  1.19280 0.02254               25.00000      5984       False               NaN
+     always_quiet     filing    0.00154        0.00154  1.00000 1.00000               44.50000    316656        True               NaN
+ random_noise[46]     filing    0.00134        0.08158  0.86778 0.01639               29.00000      5982       False               NaN
+ random_noise[44]     filing    0.00117        0.08156  0.75918 0.01434               28.50000      5983       False               NaN
+   rl_policy[s46]     filing    0.00067        0.08163  0.43418 0.00820               37.00000      5978       False           0.99951
+   rl_policy[s45]     filing    0.00017        0.08158  0.10847 0.00205               43.36472      5982       False           0.99999
+   rl_policy[s42]     filing    0.00000        0.08139  0.00000 0.00000               38.00000      5996       False           0.88897
+   rl_policy[s44]     filing    0.00000        0.08132  0.00000 0.00000               37.00000      6001       False           0.95331
+
+-- slice: unscheduled --
+         baseline t0_variant  precision  max_precision    lift  recall  median_lead_trading_h  n_alerts  degenerate  policy_flag_rate
+            cusum     filing    0.00958        0.08948 5.80146 0.10707               21.00000      5845       False               NaN
+   rl_policy[s43]     filing    0.00940        0.08934 5.68911 0.10516               20.00000      5854       False           0.99975
+    volume_zscore     filing    0.00890        0.08951 5.38892 0.09943               20.00000      5843       False               NaN
+gradient_boosting     filing    0.00468        0.08741 2.83383 0.05354               38.50000      5983       False               NaN
+   rl_policy[s46]     filing    0.00300        0.08728 1.81901 0.03442               41.50000      5992       False           0.99948
+ random_noise[45]     filing    0.00267        0.08739 1.61879 0.03059               26.00000      5985       False               NaN
+ random_noise[46]     filing    0.00234        0.08734 1.41573 0.02677               28.50000      5988       False               NaN
+   rl_policy[s45]     filing    0.00234        0.08724 1.41408 0.02677               39.00000      5995       False           0.99999
+ random_noise[44]     filing    0.00217        0.08733 1.31439 0.02486               26.50000      5989       False               NaN
+ random_noise[42]     filing    0.00201        0.08739 1.21409 0.02294               26.50000      5985       False               NaN
+     always_quiet     filing    0.00165        0.00165 1.00000 1.00000               44.50000    316691        True               NaN
+ random_noise[43]     filing    0.00150        0.08740 0.91072 0.01721               28.00000      5984       False               NaN
+   rl_policy[s44]     filing    0.00067        0.08709 0.40335 0.00765               30.50000      6005       False           0.95307
+   rl_policy[s42]     filing    0.00000        0.08722 0.00000 0.00000               33.65514      5996       False           0.88919
+
+wrote data/processed/phase10/FINAL-test-evaluation-r2.csv
+
+=== what the news correction buys (slice: all) ===
+                  precision               median_lead_trading_h              
+t0_variant           filing news_adjusted                filing news_adjusted
+baseline                                                                     
+always_quiet        0.00319       0.00319              44.50000      44.50000
+cusum               0.03452       0.03135              15.00000      17.34111
+gradient_boosting   0.00684       0.00700              37.00000      36.50000
+random_noise[42]    0.00384       0.00250              26.00000      26.50000
+random_noise[43]    0.00350       0.00300              28.50000      27.71583
+random_noise[44]    0.00334       0.00350              27.50000      27.50000
+random_noise[45]    0.00450       0.00400              26.00000      26.50000
+random_noise[46]    0.00367       0.00284              28.50000      27.50000
+rl_policy[s42]      0.00000       0.00000              36.00000      36.00000
+rl_policy[s43]      0.03286       0.02918              13.50000      14.50000
+rl_policy[s44]      0.00067       0.00067              36.00000      36.00000
+rl_policy[s45]      0.00250       0.00250              41.50000      41.50000
+rl_policy[s46]      0.00367       0.00434              38.00000      38.00000
+volume_zscore       0.03419       0.03102              13.50000      14.50000
+
+=== what the news correction buys (slice: scheduled) ===
+                  precision               median_lead_trading_h              
+t0_variant           filing news_adjusted                filing news_adjusted
+baseline                                                                     
+always_quiet        0.00154       0.00154              44.50000      44.50000
+cusum               0.02542       0.02255              13.00000      12.00000
+gradient_boosting   0.00218       0.00235              21.75000      20.72514
+random_noise[42]    0.00184       0.00184              25.00000      27.50000
+random_noise[43]    0.00200       0.00134              28.50000      27.60792
+random_noise[44]    0.00117       0.00167              28.50000      26.50000
+random_noise[45]    0.00184       0.00201              26.00000      27.50000
+random_noise[46]    0.00134       0.00134              29.00000      28.50000
+rl_policy[s42]      0.00000       0.00000              38.00000      38.00000
+rl_policy[s43]      0.02390       0.02052              13.00000      13.00000
+rl_policy[s44]      0.00000       0.00000              37.00000      37.00000
+rl_policy[s45]      0.00017       0.00017              43.36472      43.36472
+rl_policy[s46]      0.00067       0.00134              37.00000      36.74472
+volume_zscore       0.02574       0.02271              11.00000      11.25111
+
+=== what the news correction buys (slice: unscheduled) ===
+                  precision               median_lead_trading_h              
+t0_variant           filing news_adjusted                filing news_adjusted
+baseline                                                                     
+always_quiet        0.00165       0.00165              44.50000      44.50000
+cusum               0.00958       0.00921              21.00000      21.73625
+gradient_boosting   0.00468       0.00468              38.50000      38.50000
+random_noise[42]    0.00201       0.00067              26.50000      26.00000
+random_noise[43]    0.00150       0.00167              28.00000      28.30028
+random_noise[44]    0.00217       0.00184              26.50000      28.50000
+random_noise[45]    0.00267       0.00201              26.00000      26.50000
+random_noise[46]    0.00234       0.00150              28.50000      27.08917
+rl_policy[s42]      0.00000       0.00000              33.65514      33.10833
+rl_policy[s43]      0.00940       0.00902              20.00000      20.00000
+rl_policy[s44]      0.00067       0.00067              30.50000      30.50000
+rl_policy[s45]      0.00234       0.00234              39.00000      39.00000
+rl_policy[s46]      0.00300       0.00301              41.50000      41.50000
+volume_zscore       0.00890       0.00870              20.00000      20.00000
+
+total 1074s
+PHASE10 DONE
