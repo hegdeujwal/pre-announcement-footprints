@@ -379,6 +379,10 @@ def test_the_lift_caveat_is_not_applied_to_the_corrected_re_run():
     body = _text(_run("Evaluation"))
     if "re-run once on 2026-09-10" in body:
         assert "not trustworthy" not in body
+        # The headline box once quoted the void frame's disqualifier against
+        # the re-run's own lift, which only the "not trustworthy" check missed.
+        assert "disqualifies" not in body
+        assert "29.6× on this frame" not in body
         assert "random_noise" in body, "the null must be named on screen"
 
 

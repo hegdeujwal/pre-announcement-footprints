@@ -659,7 +659,8 @@ def evaluation() -> None:
         "before one is far less interesting. Unscheduled events are the real "
         "target, and pooling would let the easy half carry the number.")
     # Only the void files carry the caveat; the re-run's lift is sound.
-    if "-r2" in source or "re-run" in source:
+    void = not ("-r2" in source or "re-run" in source)
+    if not void:
         ui.note(_NULL_NOTE)
     else:
         st.warning(_LIFT_CAVEAT)
@@ -705,15 +706,25 @@ def evaluation() -> None:
         top = view.iloc[0]
         floor = view[view.baseline == "always_quiet"]["precision"]
         lift = (top["precision"] / floor.iloc[0]) if len(floor) and floor.iloc[0] else None
-        st.success(
-            f"**{top['baseline']}** leads this slice at "
-            f"**{ui.pct(top['precision'], 3)}** precision"
+        noise = view[view.baseline.str.startswith("random_noise")]["lift"]
+        if not lift:
+            said = ""
+        elif void:
             # The lift is quoted with its disqualifier attached, not silently.
             # A bare "22.1× the do-nothing floor" reads as the finding, and
-            # pure noise scores 29.6× on this evaluation frame.
-            + (f", {lift:.1f}× the do-nothing floor — a figure the caveat above "
-               f"disqualifies until the evaluation frame is recomputed, since "
-               f"pure noise reaches 29.6× on this frame" if lift else "")
+            # pure noise scores 29.6× on the void frame.
+            said = (f", {lift:.1f}× the do-nothing floor — a figure the caveat "
+                    f"above disqualifies until the evaluation frame is "
+                    f"recomputed, since pure noise reaches 29.6× on this frame")
+        else:
+            # On the corrected frame the lift stands; the null beside it is
+            # what makes it a finding, so it is quoted in the same sentence.
+            said = f", {lift:.1f}× the do-nothing floor" + (
+                f" — random noise reaches {noise.min():.1f}–{noise.max():.1f}× "
+                f"on this slice" if len(noise) else "")
+        st.success(
+            f"**{top['baseline']}** leads this slice at "
+            f"**{ui.pct(top['precision'], 3)}** precision" + said
             + f", against a ceiling of {ui.pct(top['max_precision'], 2)}. "
             f"**If a simple baseline wins, it is shown winning** — that is the "
             f"finding, not something to hide.")
