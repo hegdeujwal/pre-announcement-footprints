@@ -22,8 +22,8 @@ results_export:
   - phase10/FINAL-test-evaluation-r2.csv
   - phase10/FINAL-test-run-r2.log
   - phase10/CORRECTION-NOTE.md
-  - p8-with-news-val.csv
-  - p8-without-news-val.csv
+  - baseline-comparison-val-r2.csv
+  - p8-with-news-val-r2.csv
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps

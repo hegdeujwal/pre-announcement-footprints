@@ -398,3 +398,19 @@ def test_a_fresh_clone_has_the_final_results_committed():
         body = (root / name).read_bytes()
         assert hashlib.sha256(body).hexdigest() in manifest, name
     assert "phase10/FINAL-test-evaluation-r2.csv" in cfg["results_export"]
+
+
+def test_the_news_ablation_reads_the_corrected_frame_with_its_noise_floor():
+    """The 2026-09-08 pair was scored where pure noise reached 29.6x; on it
+    news read +39% on unscheduled events. The section reads the 2026-09-10
+    pair and prints the random-noise range beside the lift."""
+    import inspect
+
+    from app import screens
+
+    src = inspect.getsource(screens)
+    assert '"p8-with-news-val.csv"' not in src
+    assert '"p8-without-news-val.csv"' not in src
+    at = _run("Evaluation")
+    tables = [d.value for d in at.dataframe if "lift with news" in d.value.columns]
+    assert tables and "random noise" in tables[0].columns

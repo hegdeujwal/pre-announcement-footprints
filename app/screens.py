@@ -579,6 +579,15 @@ _PHASE10 = (
      "drops. Do not quote these numbers."),
 )
 
+#: Phase 8, the news ablation, on the corrected frame (2026-09-10). The
+#: without-news arm IS the canonical validation comparison — news off is the
+#: default — and the with-news arm was run on the same 314,694 windows and the
+#: same 1,452 events three hours later with nothing in between that touches
+#: gradient boosting. The 2026-09-08 pair (`p8-with-news-val.csv`,
+#: `p8-without-news-val.csv`) used the void frame and is no longer read.
+_P8_WITHOUT = "baseline-comparison-val-r2.csv"
+_P8_WITH = "p8-with-news-val-r2.csv"
+
 #: Kept as a standing caption rather than a footnote, because it disqualifies a
 #: column that is on screen. Quoted from `CORRECTION-NOTE.md`.
 #: Shown ONLY when a void artifact is on screen. It disqualifies the `lift`
@@ -622,9 +631,7 @@ def evaluation() -> None:
             source = caption
             break
     if table.empty:
-        table = data.comparison("p8-without-news-val.csv")
-    if table.empty:
-        table = data.comparison("baseline-comparison-val.csv")
+        table = data.comparison(_P8_WITHOUT)
     if table.empty:
         ui.note("No comparison table built yet. Run "
                 "`python -m src.baselines.compare --split val --out …`")
@@ -737,35 +744,71 @@ def evaluation() -> None:
                "because at most one FLAG is allowed per 48-hour window; "
                "`pct_windows_alerted` is the interpretable one.")
 
-    with_news = data.comparison("p8-with-news-val.csv")
-    without = data.comparison("p8-without-news-val.csv")
+    with_news = data.comparison(_P8_WITH)
+    without = data.comparison(_P8_WITHOUT)
     if not with_news.empty and not without.empty:
-        ui.section("Phase 8 — does the news channel help?",
-                   "Gradient boosting only: it is the sole baseline reading "
-                   "more than one column, so it is the only one that can carry "
-                   "this comparison. Validation, not test.")
-        a = without[(without.t0_variant == variant)
-                    & (without.baseline == "gradient_boosting")]
-        b = with_news[(with_news.t0_variant == variant)
-                      & (with_news.baseline == "gradient_boosting")]
-        m = a.merge(b, on="slice", suffixes=("_without", "_with"))
-        m = m[m["slice"].isin(["all", "scheduled", "unscheduled"])]
-        st.dataframe(pd.DataFrame({
-            "slice": m["slice"],
-            "without news": m["precision_without"].map(lambda v: ui.pct(v, 3)),
-            "with news": m["precision_with"].map(lambda v: ui.pct(v, 3)),
-            "change": ((m.precision_with / m.precision_without - 1)
-                       .map(lambda v: f"{v * 100:+.1f}%")),
-            "lead without": m["median_lead_trading_h_without"].map(lambda v: f"{v:.1f} h"),
-            "lead with": m["median_lead_trading_h_with"].map(lambda v: f"{v:.1f} h"),
-            "lead change": ((m.median_lead_trading_h_with
-                             - m.median_lead_trading_h_without)
-                            .map(lambda v: f"{v:+.1f} h")),
-        }), width="stretch", hide_index=True)
-        st.caption("Lead time falls where precision rises: press coverage "
-                   "accumulates close to the event, so it buys confidence at "
-                   "the cost of warning. The delta is reported with its sign "
-                   "either way.")
+        _news_ablation(without, with_news, variant)
+
+
+def _news_ablation(without: pd.DataFrame, with_news: pd.DataFrame,
+                   variant: str) -> None:
+    """Phase 8 on the corrected frame, with the noise floor beside it.
+
+    The first version of this section read the 2026-09-08 pair, scored on the
+    frame where pure noise reached 29.6x; on it news looked like +39% on
+    unscheduled events. On the 2026-09-10 frame the same comparison is
+    gradient boosting moving from about the noise floor to just above it, so
+    the random-noise range is printed in the same table: a lift is only a
+    finding if it clears that. Every figure is read off the files.
+    """
+    ui.section("Phase 8 — does the news channel help?",
+               "Gradient boosting only: it is the sole baseline reading more "
+               "than one column, so it is the only one that can carry this "
+               "comparison. Validation, not test, on the corrected frame "
+               "(2026-09-10).")
+    slices = ["all", "scheduled", "unscheduled"]
+
+    def pick(df, base):
+        d = df[(df.t0_variant == variant) & (df.baseline == base)]
+        return d.set_index("slice").reindex(slices)
+
+    a, b = pick(without, "gradient_boosting"), pick(with_news, "gradient_boosting")
+    noise = with_news[(with_news.t0_variant == variant)
+                      & with_news.baseline.str.startswith("random_noise")]
+    lo = noise.groupby("slice")["lift"].min().reindex(slices)
+    hi = noise.groupby("slice")["lift"].max().reindex(slices)
+    hits_a = (a.precision * a.n_alerts).round()
+    hits_b = (b.precision * b.n_alerts).round()
+    st.dataframe(pd.DataFrame({
+        "slice": slices,
+        "lift without news": a["lift"].map(lambda v: f"{v:.2f}×").to_numpy(),
+        "lift with news": b["lift"].map(lambda v: f"{v:.2f}×").to_numpy(),
+        "random noise": [f"{l:.2f}–{h:.2f}×" for l, h in zip(lo, hi)],
+        "hits (without → with)": [f"{int(x)} → {int(y)}"
+                                  for x, y in zip(hits_a, hits_b)],
+        "lead without": a["median_lead_trading_h"].map(lambda v: f"{v:.1f} h").to_numpy(),
+        "lead with": b["median_lead_trading_h"].map(lambda v: f"{v:.1f} h").to_numpy(),
+    }), width="stretch", hide_index=True)
+
+    clear = [sl for sl in slices if b.loc[sl, "lift"] > hi[sl]]
+    # A rough two-count z for the change in hits; the arms share their
+    # windows, so this is a guide to size, not a test.
+    z = ((hits_b - hits_a) / (hits_a + hits_b).clip(lower=1) ** 0.5).round(1)
+    sizes = ", ".join(f"{sl} z ≈ {z[sl]:.1f}" for sl in slices)
+    st.caption(
+        "**Read the lift against the random-noise column, not the change "
+        "between the two.** Gradient boosting sits close to the noise floor "
+        "with or without news, so a large percentage change is a handful of "
+        "hits — the hits column shows how many. "
+        + (f"With news it clears the noise range on: {', '.join(clear)}. "
+           if clear else "With news it clears the noise range on no slice. ")
+        + f"Clearing that range is not yet a significant gain; the change in "
+        f"hits, in rough standard errors: {sizes} — two is the usual bar, and "
+        f"several slices were looked at. Lead time "
+        "falls with news — press coverage accumulates close to the event, so "
+        "it buys confidence at the cost of warning. The 2026-09-08 version of "
+        "this table (+39% on unscheduled events) was scored on the frame where "
+        "pure noise reached 29.6× and is void.")
 
 
 # --------------------------------------------------------------------------
