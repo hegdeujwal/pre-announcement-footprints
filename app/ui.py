@@ -172,12 +172,14 @@ def honest_rate(split: dict, hours: int) -> str:
         f"**{split['unscheduled']} of {split['resolved']}** graded alerts "
         f"({pct(split['unscheduled_rate'], 1)}) were followed by an "
         f"**unscheduled** 8-K within {hours} hours — the number this project "
-        f"exists to produce. A further **{split['scheduled']}** "
+        f"exists to produce. **{split['scheduled']}** "
         f"({pct(split['scheduled_rate'], 1)}) were followed by a scheduled "
-        f"one, a results announcement whose date was published weeks ahead. "
-        f"Pooled that is {pct(split['pooled'], 1)}, which is why the two are "
-        f"never reported as one number. Alerts with no outcome recorded are "
-        f"excluded from both sides.")
+        f"one, a results announcement whose date was published weeks ahead; "
+        f"an alert can be followed by both. Any 8-K at all, routine filings "
+        f"included, is {pct(split['pooled'], 1)}, which is why the figures "
+        f"are never reported as one number. The same graded columns feed "
+        f"`python -m src.eval.live_vs_chance`, so the two always agree. "
+        f"Alerts with no outcome recorded are excluded from every figure.")
 
 
 def section(title: str, explain: str = "") -> None:

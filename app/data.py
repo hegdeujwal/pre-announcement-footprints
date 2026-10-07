@@ -181,7 +181,8 @@ def quarantine() -> pd.DataFrame:
 
 
 _OUTCOME_COLS = ["alert_id", "checked_utc", "filed", "accession_no",
-                 "item_code", "t0_utc", "lead_trading_h"]
+                 "item_code", "t0_utc", "lead_trading_h",
+                 "filed_scheduled", "filed_unscheduled"]
 
 
 def _db_outcomes() -> pd.DataFrame:
@@ -195,9 +196,10 @@ def _db_outcomes() -> pd.DataFrame:
         return pd.DataFrame(columns=_OUTCOME_COLS)
     try:
         with _conn() as conn:
-            return pd.read_sql_query(
-                "SELECT alert_id, checked_utc, filed, accession_no, item_code, "
-                "t0_utc, lead_trading_h FROM alert_outcomes", conn)
+            # SELECT * and reindex: a database opened read-only is never
+            # migrated, so an older one lacks the two kind columns.
+            return pd.read_sql_query("SELECT * FROM alert_outcomes",
+                                     conn).reindex(columns=_OUTCOME_COLS)
     except Exception:
         return pd.DataFrame(columns=_OUTCOME_COLS)
 
@@ -234,7 +236,8 @@ def outcomes() -> pd.DataFrame:
     frames = [f for f in frames if not f.empty]
     if not frames:
         return pd.DataFrame(columns=_OUTCOME_COLS)
-    merged = pd.concat(frames, ignore_index=True)
+    merged = pd.concat([f.reindex(columns=_OUTCOME_COLS) for f in frames],
+                       ignore_index=True)
     return merged.drop_duplicates("alert_id", keep="first")[_OUTCOME_COLS]
 
 
@@ -372,7 +375,23 @@ def split_hit_rates(df: pd.DataFrame) -> dict:
     out = {"resolved": resolved, "filed": filed, "pooled": rate,
            "scheduled": 0, "scheduled_rate": None,
            "unscheduled": 0, "unscheduled_rate": None}
-    if not resolved or "item_code" not in df:
+    if not resolved:
+        return out
+
+    # The grader's own answer, when it gave one: did an 8-K of each kind
+    # follow ANYWHERE in the window (`live.outcomes.kinds_followed`) — the
+    # same columns `live_vs_chance` reads, so the two cannot disagree. A
+    # routine filing (excluded items only) counts in neither slice. The two
+    # slices can overlap, so they need not add up to the pooled rate.
+    graded = _counted(df)
+    graded = graded[graded["filed"].notna()]
+    if "filed_unscheduled" in graded and graded["filed_unscheduled"].notna().all():
+        sched = int(graded["filed_scheduled"].sum())
+        unsched = int(graded["filed_unscheduled"].sum())
+        out.update(scheduled=sched, scheduled_rate=sched / resolved,
+                   unscheduled=unsched, unscheduled_rate=unsched / resolved)
+        return out
+    if "item_code" not in df:
         return out
 
     codes = {str(c) for c in config()["items"]["scheduled"]}

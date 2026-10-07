@@ -75,8 +75,9 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     from src.live.monitor import (check_session_volumes, conform,
                                   export_quarantine_csv, fetch_latest,
                                   fetch_recent_filings, latest_bar_frame,
-                                  latest_stored_bar, restate_start)
-    from src.live.outcomes import backfill, export_outcomes_csv
+                                  latest_stored_bar, restate_start,
+                                  retime_filings)
+    from src.live.outcomes import backfill, export_outcomes_csv, regrade
 
     started = time.time()
     result: dict = {"started_utc": utc_now_ts()}
@@ -108,10 +109,21 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
         # without this the horizon never advances and every alert the monitor
         # ever raises stays deferred forever.
         result["filings"] = fetch_recent_filings(cfg, conn, tickers=tickers)
+        # Filings stored before acceptance times came from headers.
+        # Self-limiting: once every live-period filing is re-timed this
+        # finds nothing and makes no request.
+        result["retime"] = retime_filings(cfg, conn)
     else:
         result["bars_appended"] = 0
         result["volume_check"] = None
         result["filings"] = None
+        result["retime"] = None
+
+    # A grade is only as good as the filing times behind it: when any time
+    # moved, every grade is recomputed; otherwise only rows graded before the
+    # kind columns existed are filled in.
+    moved = bool(result["retime"] and result["retime"]["moved"])
+    result["regrade"] = regrade(cfg, conn, only_missing_kinds=not moved)
 
     frame = conform(latest_bar_frame(cfg, conn, tickers, as_of=as_of))
     result["bars_scored"] = len(frame)
@@ -179,6 +191,18 @@ def render(result: dict) -> str:
         f"alerts        : {result['alerts_found']} found, "
         f"{result['alerts_new']} new",
     ]
+    rt, rg = result.get("retime"), result.get("regrade")
+    if f:
+        lines.append(f"filing times  : {f.get('header_timed', 0)} new from headers"
+                     + (f", {f['header_failed']} held back" if f.get("header_failed") else "")
+                     + (f"; JSON drift (h) {f['json_drift_h']}" if f.get("json_drift_h") else ""))
+    if rt:
+        lines.append(f"re-timed      : {rt['checked']} filings, {rt['moved']} moved"
+                     + (f", {rt['failed']} unreadable" if rt["failed"] else "")
+                     + (f"; drift (h) {rt['drift_h']}" if rt["drift_h"] else ""))
+    if rg:
+        lines.append(f"regraded      : {rg['regraded']} outcomes, "
+                     f"{rg['filed_changed']} changed filed/not filed")
     o = result["outcomes"]
     lines.append(f"outcomes      : scored {o['scored']}, filed {o['filed']}, "
                  f"deferred {o['pending']} "

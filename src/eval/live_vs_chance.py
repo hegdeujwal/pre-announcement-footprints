@@ -20,7 +20,11 @@ scheduled (an item in `items.scheduled`, i.e. earnings) and unscheduled (a
 substantive item and no scheduled one). A filing whose items are all in
 `items.exclude` is routine and counts only under "any".
 
-Grading follows `live.outcomes.first_filing_after`: t0 is the event's
+The alerts' own hit rates are READ from the committed grades
+(`live-log/outcomes.csv`, written by `live.outcomes`), never recomputed here,
+so this table and the dashboard cannot disagree. The controls are graded by
+the same rule against this machine's filings:
+`live.outcomes.first_filing_after`: t0 is the event's
 corrected instant when one exists, else acceptance; the filing must be strictly
 after the alert bar and within `live.outcome_window_hours` wall-clock hours;
 and an alert is graded only if its whole window ends before the filing horizon
@@ -46,6 +50,7 @@ import numpy as np
 import pandas as pd
 
 from src.live.incidents import in_incident
+from src.live.outcomes import filing_kind
 
 #: Slices of "what followed", in reading order. AGENTS.md rule 7.
 KINDS = ("any", "scheduled", "unscheduled")
@@ -53,14 +58,6 @@ KINDS = ("any", "scheduled", "unscheduled")
 #: The controls, keyed by the column prefix used throughout.
 CONTROLS = {"A": "random_stock_same_hour", "B": "same_stock_random_hour",
             "C": "stock_only_ranking"}
-
-
-def filing_kind(items: str | None, excluded: set[str], scheduled: set[str]) -> str:
-    """'scheduled', 'unscheduled' or 'routine', from a filing's item codes."""
-    codes = {c.strip() for c in str(items or "").split(",") if c.strip()} - excluded
-    if not codes:
-        return "routine"
-    return "scheduled" if codes & scheduled else "unscheduled"
 
 
 class FilingIndex:
@@ -109,6 +106,25 @@ def grade(alerts: pd.DataFrame, index: FilingIndex, universe: list[str],
                for (d, ts), n in per_det_hour.items()}
         out[f"C_{kind}"] = [top[(d, ts)] for d, ts in zip(out.detector, out.ts_utc)]
     return out
+
+
+def use_committed_hits(graded: pd.DataFrame, outcomes: pd.DataFrame) -> pd.DataFrame:
+    """Replace this module's own hit columns with the committed grades.
+
+    `live.outcomes` is the one grader. Grading again here, from whatever
+    filings this machine holds, is how the dashboard and this table came to
+    disagree on 412 of 14,576 alerts (2026-10-07). The controls still come
+    from the filing index — they ask about stocks and hours no alert was on,
+    which no committed grade covers. Alerts without a kind-aware grade are
+    dropped, not guessed.
+    """
+    o = outcomes.dropna(subset=["filed_unscheduled"])[
+        ["alert_id", "filed", "filed_scheduled", "filed_unscheduled"]]
+    out = graded.drop(columns=[f"hit_{k}" for k in KINDS]).merge(o, on="alert_id")
+    return out.rename(columns={"filed": "hit_any",
+                               "filed_scheduled": "hit_scheduled",
+                               "filed_unscheduled": "hit_unscheduled"}
+                      ).astype({f"hit_{k}": bool for k in KINDS})
 
 
 def summarise(graded: pd.DataFrame, n_boot: int, seed: int,
@@ -193,13 +209,15 @@ def stock_only_order(train_positives: pd.DataFrame, universe: list[str],
 
 def main() -> None:
     from src import db
-    from src.live.catchup import DEFAULT_LOG_CSV
+    from src.live.catchup import DEFAULT_LOG_CSV, DEFAULT_OUTCOMES_CSV
     from src.utils.config import load_config
     from src.utils.timeutils import ts_to_iso
 
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--alerts", default=DEFAULT_LOG_CSV)
+    ap.add_argument("--outcomes", default=DEFAULT_OUTCOMES_CSV,
+                    help="the committed grades; the hit rates are read from here")
     ap.add_argument("--out", default=None, help="write the table as CSV")
     args = ap.parse_args()
 
@@ -208,9 +226,11 @@ def main() -> None:
     conn = db.get_conn(cfg["paths"]["db"])
     alerts, index, universe, horizon, positives = load_inputs(cfg, conn, args.alerts)
     rng = np.random.default_rng(int(knobs["seed"]))
-    graded = grade(alerts, index, universe,
-                   stock_only_order(positives, universe, rng),
-                   int(knobs["random_hours"]), rng)
+    graded = use_committed_hits(
+        grade(alerts, index, universe,
+              stock_only_order(positives, universe, rng),
+              int(knobs["random_hours"]), rng),
+        pd.read_csv(args.outcomes))
     table = summarise(graded, int(knobs["bootstrap"]), int(knobs["seed"]),
                       float(knobs["ci"]))
 

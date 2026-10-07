@@ -118,6 +118,48 @@ def first_filing_after(conn, ticker: str, after_ts: int,
                           else row["acceptance_utc"])}
 
 
+def filing_kind(items: str | None, excluded: set[str], scheduled: set[str]) -> str:
+    """'scheduled', 'unscheduled' or 'routine', from a filing's item codes.
+
+    Scheduled if ANY surviving item is scheduled (an earnings 8-K carrying
+    other items is still an earnings 8-K); routine if every item is in
+    `items.exclude` (an exhibit-only or vote-result filing announces
+    nothing). Codes compare as strings: 1.10 and 1.1 are different items.
+    """
+    codes = {c.strip() for c in str(items or "").split(",") if c.strip()} - excluded
+    if not codes:
+        return "routine"
+    return "scheduled" if codes & scheduled else "unscheduled"
+
+
+def kinds_followed(cfg: dict, conn, ticker: str, after_ts: int,
+                   until_ts: int) -> dict[str, int]:
+    """Did a scheduled / an unscheduled 8-K follow, anywhere in the window.
+
+    Not "what kind was the first one": an alert followed by a routine vote
+    result and then, a day later, an unscheduled departure anticipated the
+    departure. The window and the instant are `first_filing_after`'s — t0
+    when the filing has an event row, acceptance otherwise, strictly after
+    the alert — so the two answers can never disagree about which filings
+    are in it. `src.eval.live_vs_chance` reads these columns rather than
+    grading again.
+    """
+    forms = tuple(cfg["edgar"]["forms"])
+    marks = ",".join("?" * len(forms))
+    rows = conn.execute(
+        f"SELECT f.items FROM filings f "
+        f"LEFT JOIN events e ON e.accession_no = f.accession_no "
+        f"WHERE f.ticker = ? AND f.form IN ({marks}) "
+        f"AND COALESCE(e.t0_utc, f.acceptance_utc) > ? "
+        f"AND COALESCE(e.t0_utc, f.acceptance_utc) <= ?",
+        (ticker, *forms, int(after_ts), int(until_ts))).fetchall()
+    excluded = {str(c) for c in cfg["items"]["exclude"]}
+    scheduled = {str(c) for c in cfg["items"]["scheduled"]}
+    kinds = {filing_kind(r[0], excluded, scheduled) for r in rows}
+    return {"filed_scheduled": int("scheduled" in kinds),
+            "filed_unscheduled": int("unscheduled" in kinds)}
+
+
 def backfill(cfg: dict, conn, horizon: int | None = None,
              limit: int | None = None) -> dict:
     """Score every alert whose outcome window has fully elapsed.
@@ -164,20 +206,66 @@ def backfill(cfg: dict, conn, horizon: int | None = None,
             # figure in this project uses.
             lead = trading_hours_between(ts, hit["t0_utc"],
                                          calendar=_calendar(cfg))
+        kinds = (kinds_followed(cfg, conn, alert["ticker"], ts, until) if hit
+                 else {"filed_scheduled": 0, "filed_unscheduled": 0})
         conn.execute(
             "INSERT INTO alert_outcomes (alert_id, checked_utc, filed, "
-            "accession_no, item_code, t0_utc, lead_trading_h) "
-            "VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            "accession_no, item_code, t0_utc, lead_trading_h, "
+            "filed_scheduled, filed_unscheduled) "
+            "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             (alert["alert_id"], checked_utc, 1 if hit else 0,
              hit["accession_no"] if hit else None,
              hit["items"] if hit else None,
-             hit["t0_utc"] if hit else None, lead))
+             hit["t0_utc"] if hit else None, lead,
+             kinds["filed_scheduled"], kinds["filed_unscheduled"]))
         scored += 1
         filed += 1 if hit else 0
 
     conn.commit()
     return {"scored": scored, "filed": filed, "missed": scored - filed,
             "pending": pending, "horizon_utc": horizon}
+
+
+def regrade(cfg: dict, conn, only_missing_kinds: bool = False) -> dict:
+    """Grade every already-graded alert again, against the filings held now.
+
+    Outcomes are derived, not evidence: the alert log is the record, and a
+    grade is only as good as the filing times it was computed from. The live
+    run stored acceptance times taken from a submissions JSON that drifted by
+    the Eastern offset (found 2026-10-07), so a filing could land on the
+    wrong side of an alert. Once `filings` has been re-timed, every grade is
+    recomputed in place — the same rows, so the export's shrink guard still
+    holds — with `checked_utc` moved to now so the change is dated.
+
+    `only_missing_kinds` limits it to rows graded before the kind columns
+    existed.
+    """
+    forms = tuple(cfg["edgar"]["forms"])
+    span = window_seconds(cfg)
+    where = "WHERE o.filed_unscheduled IS NULL" if only_missing_kinds else ""
+    rows = conn.execute(
+        f"SELECT a.alert_id, a.ticker, a.ts_utc, o.filed FROM alerts a "
+        f"JOIN alert_outcomes o ON o.alert_id = a.alert_id {where}").fetchall()
+    now = utc_now_ts()
+    changed = 0
+    for r in rows:
+        ts, until = int(r["ts_utc"]), int(r["ts_utc"]) + span
+        hit = first_filing_after(conn, r["ticker"], ts, until, forms)
+        lead = (trading_hours_between(ts, hit["t0_utc"], calendar=_calendar(cfg))
+                if hit else None)
+        kinds = (kinds_followed(cfg, conn, r["ticker"], ts, until) if hit
+                 else {"filed_scheduled": 0, "filed_unscheduled": 0})
+        changed += int((1 if hit else 0) != r["filed"])
+        conn.execute(
+            "UPDATE alert_outcomes SET checked_utc = ?, filed = ?, "
+            "accession_no = ?, item_code = ?, t0_utc = ?, lead_trading_h = ?, "
+            "filed_scheduled = ?, filed_unscheduled = ? WHERE alert_id = ?",
+            (now, 1 if hit else 0, hit["accession_no"] if hit else None,
+             hit["items"] if hit else None, hit["t0_utc"] if hit else None,
+             lead, kinds["filed_scheduled"], kinds["filed_unscheduled"],
+             r["alert_id"]))
+    conn.commit()
+    return {"regraded": len(rows), "filed_changed": changed}
 
 
 def _calendar(cfg: dict):
@@ -242,7 +330,8 @@ def item_breakdown(conn, detector: str | None = None) -> dict:
 #: The CSV column order for exported outcomes. Fixed for the same reason as
 #: `alertlog.CSV_COLUMNS`: a diff between two exports is a diff in the data.
 OUTCOME_CSV_COLUMNS = ("alert_id", "checked_utc", "filed", "accession_no",
-                       "item_code", "t0_utc", "lead_trading_h")
+                       "item_code", "t0_utc", "lead_trading_h",
+                       "filed_scheduled", "filed_unscheduled")
 
 
 def _csv_row_count(path) -> int:
@@ -334,13 +423,17 @@ def import_outcomes_csv(conn, path) -> int:
 
     inserted = 0
     for r in rows:
+        # The two kind columns arrived 2026-10-07; a file written before then
+        # has neither, and those rows come back NULL for `regrade` to fill.
         cur = conn.execute(
             "INSERT INTO alert_outcomes (alert_id, checked_utc, filed, "
-            "accession_no, item_code, t0_utc, lead_trading_h) "
-            "VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            "accession_no, item_code, t0_utc, lead_trading_h, "
+            "filed_scheduled, filed_unscheduled) "
+            "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
             (r["alert_id"], int(r["checked_utc"]), _int(r["filed"]),
              r["accession_no"] or None, r["item_code"] or None,
-             _int(r["t0_utc"]), _float(r["lead_trading_h"])))
+             _int(r["t0_utc"]), _float(r["lead_trading_h"]),
+             _int(r.get("filed_scheduled")), _int(r.get("filed_unscheduled"))))
         inserted += cur.rowcount
     conn.commit()
     return inserted

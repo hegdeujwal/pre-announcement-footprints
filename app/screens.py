@@ -157,9 +157,10 @@ def _queue_stats(view: pd.DataFrame, all_rows: pd.DataFrame) -> None:
                 ui.pct(split["unscheduled_rate"], 1)
                 if split["unscheduled_rate"] is not None else "—",
                 help=(f"{split['unscheduled']} of {resolved} graded alerts were "
-                      f"followed by an UNSCHEDULED 8-K within {hours} hours. A "
-                      f"further {split['scheduled']} were followed by a "
-                      f"scheduled one (a results announcement); pooled that is "
+                      f"followed by an UNSCHEDULED 8-K within {hours} hours; "
+                      f"{split['scheduled']} by a scheduled one (a results "
+                      f"announcement). One alert can be followed by both. Any "
+                      f"8-K at all, routine ones included, is "
                       f"{ui.pct(split['pooled'], 1)}, which this project does "
                       f"not report as one number." if resolved else
                       "No alert in this view has both a closed window and an "
@@ -814,9 +815,9 @@ def monitor_log() -> None:
             f"the easy half.")
     ui.stat(h[2], "Pooled (not the headline)",
             ui.pct(split["pooled"], 1) if split["pooled"] is not None else "—",
-            f"{split['filed']} of {split['resolved']}. Shown for completeness "
-            f"and never quoted alone: it is more than double the unscheduled "
-            f"figure, which is exactly why the two are kept apart.")
+            f"{split['filed']} of {split['resolved']} followed by any 8-K, "
+            f"routine filings included. Shown for completeness and never "
+            f"quoted alone: the easy half and the routine filings carry it.")
 
     ui.note(ui.honest_rate(split, hours))
 
