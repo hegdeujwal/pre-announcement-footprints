@@ -491,7 +491,7 @@ def fetch_recent_filings(cfg: dict, conn, tickers: list[str] | None = None,
     them, so this is one request per company rather than a full history walk.
     """
     from src.collectors.edgar import (EdgarClient, fetch_company_filings,
-                                      filing_rows)
+                                      filing_rows, header_acceptance)
     from src import db as _db
 
     now_ts = int(now_ts if now_ts is not None else utc_now_ts())
@@ -510,7 +510,8 @@ def fetch_recent_filings(cfg: dict, conn, tickers: list[str] | None = None,
         raise SystemExit("no companies to collect filings for.")
 
     client = client or EdgarClient(cfg)
-    records = new_rows = failed = 0
+    records = new_rows = failed = timed = header_failed = 0
+    drift: dict[float, int] = {}
     for company in companies:
         try:
             fetched = fetch_company_filings(cfg, client, company["cik"],
@@ -518,7 +519,33 @@ def fetch_recent_filings(cfg: dict, conn, tickers: list[str] | None = None,
                                             force=True)
             rows = filing_rows(cfg, fetched, company["cik"], company["ticker"])
             records += len(fetched)
-            new_rows += _db.upsert_filings(conn, rows)
+            # A NEW filing takes its acceptance time from its own header,
+            # never from the submissions JSON (see
+            # `edgar.header_acceptance`). Rows already held are left to the
+            # upsert, which ignores them. A filing whose header cannot be read
+            # is held back rather than stored with a time known to drift; it
+            # is new again next run.
+            held = _held_accessions(conn, [r["accession_no"] for r in rows])
+            keep = []
+            for r in rows:
+                if r["accession_no"] in held:
+                    keep.append(r)
+                    continue
+                try:
+                    true_ts = header_acceptance(cfg, client, r["cik"],
+                                                r["accession_no"])
+                except Exception as exc:
+                    header_failed += 1
+                    log.warning("filings: header for %s unreadable, held back: "
+                                "%s", r["accession_no"], exc)
+                    continue
+                if r["acceptance_utc"] is not None:
+                    off = round((r["acceptance_utc"] - true_ts) / 3600, 2)
+                    drift[off] = drift.get(off, 0) + 1
+                r.update(acceptance_utc=true_ts, acceptance_source="header")
+                timed += 1
+                keep.append(r)
+            new_rows += _db.upsert_filings(conn, keep)
         except Exception as exc:                  # one 404 must not cost the rest
             failed += 1
             log.warning("filings: %s (%s) failed: %s: %s", company["ticker"],
@@ -533,9 +560,78 @@ def fetch_recent_filings(cfg: dict, conn, tickers: list[str] | None = None,
             f"EDGAR returned zero records across all {len(companies)} "
             f"companies — refusing to report success. The endpoint is "
             f"unreachable, throttling, or the User-Agent was rejected.")
+    # The same rule for the headers: new filings and not one readable header
+    # means every new filing was held back, which is not a quiet day.
+    if header_failed and not timed:
+        raise SystemExit(
+            f"all {header_failed} new filings' headers were unreadable — no "
+            f"acceptance time could be trusted, so none was stored.")
 
     return {"companies": len(companies), "records": records,
-            "new_filings": new_rows, "failed": failed, "since_utc": since_ts}
+            "new_filings": new_rows, "failed": failed, "since_utc": since_ts,
+            "header_timed": timed, "header_failed": header_failed,
+            "json_drift_h": dict(sorted(drift.items()))}
+
+
+def _held_accessions(conn, accessions: list[str]) -> set[str]:
+    if not accessions:
+        return set()
+    marks = ",".join("?" * len(accessions))
+    return {r[0] for r in conn.execute(
+        f"SELECT accession_no FROM filings WHERE accession_no IN ({marks})",
+        accessions)}
+
+
+def retime_filings(cfg: dict, conn, client=None,
+                   limit: int | None = None) -> dict:
+    """Re-time live-period filings stored from the drifting JSON field.
+
+    Every filing an in-universe company made since `live.retime_from` whose
+    `acceptance_source` is not yet 'header' gets its time from its own header
+    and is updated in place. Filings are otherwise never rewritten — this is
+    a correction of a vendor field, and `acceptance_source` records which
+    rows it touched. The study window is out of reach by construction: it
+    is frozen, its test set is spent, and a check of every event filing
+    against its header found its times right but for a small set recorded
+    in the progress tracker.
+
+    `limit` caps one run's requests (`live.retime_batch`); what is left is
+    picked up next run.
+    """
+    from src.collectors.edgar import EdgarClient, header_acceptance
+    from src.utils.timeutils import date_str_to_ts
+
+    floor = date_str_to_ts(str(cfg["live"]["retime_from"]))
+    limit = int(limit if limit is not None else cfg["live"]["retime_batch"])
+    rows = conn.execute(
+        "SELECT f.accession_no, f.cik, f.acceptance_utc FROM filings f "
+        "JOIN companies c ON c.cik = f.cik "
+        "WHERE c.in_universe = 1 AND f.acceptance_utc >= ? "
+        "AND f.acceptance_source IS NULL "
+        "ORDER BY f.acceptance_utc DESC LIMIT ?", (floor, limit)).fetchall()
+    if rows and client is None:
+        client = EdgarClient(cfg)
+    moved = failed = 0
+    drift: dict[float, int] = {}
+    for r in rows:
+        try:
+            true_ts = header_acceptance(cfg, client, r["cik"], r["accession_no"])
+        except Exception as exc:
+            failed += 1
+            log.warning("retime: header for %s unreadable: %s",
+                        r["accession_no"], exc)
+            continue
+        off = round((int(r["acceptance_utc"]) - true_ts) / 3600, 2)
+        drift[off] = drift.get(off, 0) + 1
+        moved += int(off != 0)
+        conn.execute("UPDATE filings SET acceptance_utc = ?, "
+                     "acceptance_source = 'header' WHERE accession_no = ?",
+                     (true_ts, r["accession_no"]))
+    conn.commit()
+    if rows and failed == len(rows):
+        raise SystemExit(f"retime: all {failed} filing headers were unreadable.")
+    return {"checked": len(rows) - failed, "moved": moved, "failed": failed,
+            "drift_h": dict(sorted(drift.items()))}
 
 
 def main() -> None:

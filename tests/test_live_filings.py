@@ -53,6 +53,26 @@ class FakeClient:
         self.forced.append(force)
         return {"filings": {"recent": self.records, "files": []}}
 
+    # Filing headers, which now supply every new filing's acceptance time.
+    # They agree with the JSON here unless a test says otherwise.
+    def header_url(self, cik, accession_no):
+        return f"https://example/hdr/{accession_no}"
+
+    def cache_path(self, url):
+        from pathlib import Path
+        return Path("/nonexistent") / url.rsplit("/", 1)[-1]
+
+    def get_bytes(self, url, force=False):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        acc = url.rsplit("/", 1)[-1]
+        i = self.records["accessionNumber"].index(acc)
+        ts = datetime.fromisoformat(
+            self.records["acceptanceDateTime"][i].replace("Z", "+00:00"))
+        ts = ts.timestamp() - getattr(self, "json_drift_s", 0)
+        wall = datetime.fromtimestamp(ts, ZoneInfo("America/New_York"))
+        return f"<ACCEPTANCE-DATETIME>{wall:%Y%m%d%H%M%S}\n".encode()
+
 
 def payload(accessions, acceptance_ts, form="8-K", items="8.01"):
     n = len(accessions)
@@ -182,3 +202,61 @@ def test_fetching_with_no_history_is_refused(cfg, tmp_path):
                                  "in_universe": 1}])
     with pytest.raises(SystemExit, match="no filings stored"):
         fetch_recent_filings(cfg, empty, tickers=["AAA"])
+
+
+# --------------------------------------------------------------------------
+# Acceptance times come from the filing header (2026-10-07)
+# --------------------------------------------------------------------------
+def test_a_new_filing_takes_its_time_from_the_header_not_the_json(cfg, conn):
+    """The JSON reported NKE's 20:15:15Z filing as 00:15:15Z the next day."""
+    true_ts = BASE + 50 * HOUR
+    client = FakeClient(payload(["0009"], [true_ts + 4 * HOUR]))
+    client.json_drift_s = 4 * HOUR
+    out = fetch_recent_filings(cfg, conn, client=client, now_ts=true_ts + 9 * HOUR)
+
+    row = conn.execute("SELECT acceptance_utc, acceptance_source FROM filings "
+                       "WHERE accession_no = '0009'").fetchone()
+    assert tuple(row) == (true_ts, "header")
+    assert out["header_timed"] == 1 and out["json_drift_h"] == {4.0: 1}
+
+
+def test_a_filing_whose_header_cannot_be_read_is_held_back(cfg, conn):
+    """Stored with a time known to drift, it would grade alerts wrongly for
+    ever; held back, it is simply new again next run."""
+    client = FakeClient(payload(["0009", "0010"], [BASE + 50 * HOUR] * 2))
+    real = client.get_bytes
+
+    def flaky(url, force=False):
+        if url.endswith("0010"):
+            return b"<html>Request Rate Threshold Exceeded</html>"
+        return real(url, force)
+
+    client.get_bytes = flaky
+    out = fetch_recent_filings(cfg, conn, client=client, now_ts=BASE + 60 * HOUR)
+    held = {r[0] for r in conn.execute("SELECT accession_no FROM filings")}
+    assert "0009" in held and "0010" not in held
+    assert out["header_failed"] == 1
+
+
+def test_retime_corrects_live_filings_and_never_the_study_window(cfg, conn):
+    from src.live.monitor import retime_filings
+
+    live_ts = date_str_to_ts(cfg["live"]["retime_from"]) + 30 * HOUR
+    study_ts = date_str_to_ts(cfg["live"]["retime_from"]) - 30 * HOUR
+    db.upsert_filings(conn, [
+        {"accession_no": "L1", "cik": "0000000001", "ticker": "AAA",
+         "form": "8-K", "items": "8.01", "acceptance_utc": live_ts + 4 * HOUR},
+        {"accession_no": "S1", "cik": "0000000001", "ticker": "AAA",
+         "form": "8-K", "items": "8.01", "acceptance_utc": study_ts}])
+    # The fixture's own filing (0001, at BASE) is live-period too, and its
+    # header puts it 4 hours earlier than stored, like L1's.
+    client = FakeClient(payload(["L1", "S1", "0001"],
+                                [live_ts + 4 * HOUR, study_ts, BASE]))
+    client.json_drift_s = 4 * HOUR
+
+    out = retime_filings(cfg, conn, client=client)
+    times = dict(conn.execute("SELECT accession_no, acceptance_utc FROM filings"))
+    assert times["L1"] == live_ts and times["S1"] == study_ts
+    assert times["0001"] == BASE - 4 * HOUR
+    assert out == {"checked": 2, "moved": 2, "failed": 0, "drift_h": {4.0: 2}}
+    assert retime_filings(cfg, conn, client=client)["checked"] == 0   # done

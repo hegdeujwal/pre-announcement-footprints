@@ -124,6 +124,11 @@ universe:
 edgar:
   submissions_base: "https://data.sec.gov/submissions"
   archives_base: "https://www.sec.gov/Archives/edgar"
+  # The zone a filing header's ACCEPTANCE-DATETIME is written in. It carries
+  # no offset; SEC's wall clock is Eastern. Checked 2026-10-07 against SEC's
+  # filing index, which does carry an offset (NKE 0000320187-26-000184:
+  # header 20261001161515, index 2026-10-01T16:15:15-04:00).
+  header_timezone: "America/New_York"
   # 8-K/A is an amendment to an 8-K — a real filing with its own acceptance
   # time, so it is an event in its own right. Matched exactly, never by prefix:
   # startswith("8-K") would also swallow forms like 8-K12B.
@@ -675,6 +680,15 @@ live:
     - run: models/live/p6-r2-s43
       threshold: 0.994017
       sha256: 4ad490cdad03403e5ce2600e5ea948f6ebdb44a28f25632d8e39be0b226fc6a0
+  # Live-period filings stored before 2026-10-07 took their acceptance time
+  # from the submissions JSON, whose acceptanceDateTime drifted by the
+  # Eastern offset (NKE 0000320187-26-000184: true 20:15:15Z, JSON now says
+  # 00:15:15Z next day, the live run had stored 16:15:15Z). Every filing from
+  # an in-universe company accepted on or after `retime_from` is re-timed
+  # from its own header, at most `retime_batch` per run. The date is the
+  # study window's end: nothing inside the frozen study is rewritten.
+  retime_from: "2026-08-01"
+  retime_batch: 5000
   # How many of the most recent STORED sessions each run fetches again, and
   # lets the fresh copy overwrite. Yahoo's intraday volumes for a session can
   # be wrong when first served and corrected later: on 2026-10-07 the run

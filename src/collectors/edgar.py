@@ -97,6 +97,12 @@ class EdgarClient:
         """An older-filings page sits beside the main submissions file."""
         return f"{self.cfg['edgar']['submissions_base']}/{page_name}"
 
+    def header_url(self, cik: str, accession_no: str) -> str:
+        """One filing's SGML header page in the Archives."""
+        folder = accession_no.replace("-", "")
+        return (f"{self.cfg['edgar']['archives_base']}/data/{int(cik)}/"
+                f"{folder}/{accession_no}-index-headers.html")
+
     def company_tickers_url(self) -> str:
         """The ticker -> CIK map used to build the universe (P2-02)."""
         return self.cfg["universe"]["company_tickers_url"]
@@ -209,6 +215,49 @@ class EdgarClient:
                 f"EDGAR returned non-JSON for {url} "
                 f"(first 120 bytes: {body[:120]!r}) — cache entry discarded"
             ) from exc
+
+
+#: `<ACCEPTANCE-DATETIME>20261001161515` in a filing's SGML header.
+_HEADER_ACCEPTANCE = re.compile(rb"ACCEPTANCE-DATETIME(?:>|&gt;)\s*(\d{14})")
+
+
+def parse_header_acceptance(body: bytes, tz_name: str) -> int:
+    """The acceptance instant from a filing header, as UTC epoch seconds.
+
+    The header states SEC's wall clock with no offset, in `tz_name`
+    (`edgar.header_timezone`, Eastern). Converted with the zone database, so a
+    filing either side of a daylight-saving change gets its own offset.
+    Raises if the field is missing: an SEC error page parses to nothing, and
+    nothing must not become a time.
+    """
+    m = _HEADER_ACCEPTANCE.search(body)
+    if m is None:
+        raise EdgarRequestError(
+            f"no ACCEPTANCE-DATETIME in the filing header "
+            f"(first 120 bytes: {body[:120]!r})")
+    wall = datetime.strptime(m.group(1).decode(), "%Y%m%d%H%M%S")
+    return int(wall.replace(tzinfo=ZoneInfo(tz_name)).timestamp())
+
+
+def header_acceptance(cfg: dict, client: EdgarClient, cik: str,
+                      accession_no: str) -> int:
+    """A filing's acceptance time from its own header, which does not drift.
+
+    Found 2026-10-07: `acceptanceDateTime` in the submissions JSON is no
+    longer stable. Filings collected on 2026-08-29 match SEC's filing index to
+    the second; the same JSON now reports every filing 4 hours late (5 in
+    winter), and the live run stored some of them 4 hours EARLY a few days
+    before that. The header's ACCEPTANCE-DATETIME has matched the index on
+    every filing checked. A cached body that does not parse is discarded, as
+    `get_json` does, so a throttling page is never served from disk.
+    """
+    url = client.header_url(cik, accession_no)
+    body = client.get_bytes(url)
+    try:
+        return parse_header_acceptance(body, cfg["edgar"]["header_timezone"])
+    except EdgarRequestError:
+        client.cache_path(url).unlink(missing_ok=True)
+        raise
 
 
 # --------------------------------------------------------------------------

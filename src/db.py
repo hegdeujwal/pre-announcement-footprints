@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS filings (
   filing_date_utc INTEGER,
   report_date_utc INTEGER,
   primary_doc TEXT,
-  fetched_utc INTEGER
+  fetched_utc INTEGER,
+  acceptance_source TEXT         -- NULL = submissions JSON; 'header' = SGML header
 );
 CREATE INDEX IF NOT EXISTS idx_filings_ticker ON filings (ticker, acceptance_utc);
 CREATE INDEX IF NOT EXISTS idx_filings_acceptance ON filings (acceptance_utc);
@@ -191,7 +192,9 @@ CREATE TABLE IF NOT EXISTS alert_outcomes (
   accession_no TEXT,             -- which filing, if any
   item_code TEXT,
   t0_utc INTEGER,                -- the filing's t0, for lead-time arithmetic
-  lead_trading_h REAL            -- trading hours from alert to t0
+  lead_trading_h REAL,           -- trading hours from alert to t0
+  filed_scheduled INTEGER,       -- any 8-K with a scheduled item in the window
+  filed_unscheduled INTEGER      -- any substantive 8-K with no scheduled item
 );
 
 -- Live sessions whose hourly bars contradicted the vendor's own daily total
@@ -225,6 +228,16 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # company. Without it a predecessor is indistinguishable from a real
     # company and every per-company count double-counts the pair.
     ("companies", "successor_cik", "TEXT"),
+    # 2026-10-07: where `acceptance_utc` came from. NULL is the submissions
+    # JSON (everything collected before this date); 'header' is the filing's
+    # own SGML header, which the live run now uses because the JSON's
+    # acceptanceDateTime drifted by the Eastern offset.
+    ("filings", "acceptance_source", "TEXT"),
+    # 2026-10-07: did an 8-K of each KIND follow the alert, not only "the
+    # first one". Unscheduled = a substantive item and no scheduled one; a
+    # filing of excluded items only counts under `filed` alone.
+    ("alert_outcomes", "filed_scheduled", "INTEGER"),
+    ("alert_outcomes", "filed_unscheduled", "INTEGER"),
 )
 
 
@@ -546,6 +559,7 @@ def company_name(conn: sqlite3.Connection, ticker: str) -> str | None:
 FILING_COLUMNS = (
     "accession_no", "cik", "ticker", "form", "items", "acceptance_utc",
     "filing_date_utc", "report_date_utc", "primary_doc", "fetched_utc",
+    "acceptance_source",
 )
 
 
