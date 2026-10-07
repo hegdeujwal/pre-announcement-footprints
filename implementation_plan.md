@@ -26,7 +26,7 @@ prices and volumes, and raises a hand — *"something is coming for this
 company"* — then measures honestly how many trading hours of warning it gives
 and how often it cries wolf.
 
-**The claim, stated so it survives a viva:**
+**The claim, stated so it survives scrutiny:**
 
 > Pre-announcement price and volume anomalies are well documented in finance,
 > and machine learning has been applied to insider trading detection using
@@ -329,12 +329,9 @@ time since last news — so a human can sanity-check rather than trust a black b
 ### Phase 10 — Week 14: final evaluation
 Unseal the test set. Run the evaluation **once**. Those are the numbers.
 
-### Phase 11 — Weeks 15–16: report and viva
-Write the limitations section around §8. Write down every trap you actually hit.
-
 ---
 
-## 10. Intended users (the report and viva both need this)
+## 10. Intended users
 
 - **Regulators / compliance — strongest.** A same-day triage queue with reasons
   attached. Current practice investigates months later, by hand, usually only
