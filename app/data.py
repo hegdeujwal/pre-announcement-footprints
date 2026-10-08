@@ -635,6 +635,61 @@ def filings(ticker: str, limit: int = 20) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
+# live rates, split and with their uncertainty
+# --------------------------------------------------------------------------
+def wilson(k: int, n: int, level: float | None = None) -> tuple[float, float]:
+    """Wilson score interval for k successes in n. (nan, nan) when n is 0.
+
+    Wilson rather than the normal approximation because these rates sit near
+    zero on small groups, where the textbook interval runs below 0%.
+    """
+    from scipy.stats import norm
+
+    if not n:
+        return float("nan"), float("nan")
+    level = level or float(config()["dashboard"]["rate_interval"])
+    z = float(norm.ppf(0.5 + level / 2))
+    p = k / n
+    den = 1 + z * z / n
+    mid = (p + z * z / (2 * n)) / den
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / den
+    return max(0.0, mid - half), min(1.0, mid + half)
+
+
+def rates_by(df: pd.DataFrame, key: pd.Series) -> pd.DataFrame:
+    """Live hit rates per group of `key`, scheduled and unscheduled apart.
+
+    Counted on NEW flags only (`episode_start`) with a closed, graded window,
+    outside every data incident. New flags, because one sustained anomaly
+    writes an alert per bar: on raw rows a single stock filled 31 of one
+    week's 58 graded alerts and set that week's rate to 64%. One row per
+    (group, kind) with its count, hits, rate and interval.
+    """
+    g = counted(df)
+    if "episode_start" in g:
+        g = g[g["episode_start"]]
+    g = g[g["outcome_state"].isin(["filed", "none"])]
+    if g.empty or "filed_unscheduled" not in g:
+        return pd.DataFrame()
+    k = key.reindex(g.index)
+    rows = []
+    for name, grp in g.groupby(k, sort=True):
+        n = len(grp)
+        for kind, col in (("unscheduled", "filed_unscheduled"),
+                          ("scheduled", "filed_scheduled")):
+            hits = int(grp[col].fillna(0).astype(int).sum())
+            lo, hi = wilson(hits, n)
+            rows.append({"group": name, "kind": kind, "n": n, "hits": hits,
+                         "rate": hits / n, "lo": lo, "hi": hi})
+    return pd.DataFrame(rows)
+
+
+def event_study() -> pd.DataFrame:
+    """The event-study table (`src.eval.event_study`), committed copy first."""
+    return comparison(config()["event_study"]["out"])
+
+
+# --------------------------------------------------------------------------
 # evaluation tables
 # --------------------------------------------------------------------------
 @st.cache_data(ttl=300)

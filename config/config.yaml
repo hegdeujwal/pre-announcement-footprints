@@ -170,6 +170,23 @@ edgar:
 # Event filtering (context.md §5)
 # ------------------------------------------------------------
 items:
+  # Display names for the dashboard, shortened from the SEC's Form 8-K item
+  # titles. Labels only: nothing reads them to decide anything.
+  names:
+    "1.01": "material agreement"
+    "1.02": "agreement ended"
+    "2.01": "acquisition or sale completed"
+    "2.02": "results"
+    "2.03": "new debt obligation"
+    "2.05": "exit or restructuring costs"
+    "2.06": "impairment"
+    "3.02": "unregistered share sale"
+    "3.03": "shareholder rights changed"
+    "4.01": "auditor changed"
+    "5.02": "director or officer change"
+    "5.03": "charter or bylaws amended"
+    "7.01": "Regulation FD disclosure"
+    "8.01": "other events"
   # 9.01 is an attachment marker, not an event type — it rides along with other
   # items and would dominate the label distribution if kept.
   # 5.07 (shareholder vote results) is excluded as routine paperwork, per
@@ -862,3 +879,15 @@ event_study:
   control_shift_bars: 70
   out: "event-study-trainval.csv"
 
+# Display settings for the dashboard's statistical charts. Not model settings:
+# changing them moves no reported number, only what is drawn.
+dashboard:
+  # An 8-K item type is charted only with at least this many events in the
+  # slice: a lift on two events is noise with a decimal point.
+  item_min_events: 50
+  # Width of the interval drawn around every live hit rate (Wilson score).
+  rate_interval: 0.95
+  # A week enters the weekly live-rate chart only with at least this many
+  # graded new flags; the monitor's first weeks hold a handful each, and
+  # their 0-80% intervals would flatten every other week to a line.
+  week_min_flags: 100

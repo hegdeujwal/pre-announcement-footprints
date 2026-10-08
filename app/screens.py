@@ -462,18 +462,36 @@ def ticker_detail() -> None:
         marker = dt.datetime.fromtimestamp(int(flagged), dt.timezone.utc)
         sev = ui.MARKER
 
+        # Once the window has closed and an 8-K followed, its t0 is drawn
+        # too: the bars after the flag are already shown then, and the filing
+        # is what they lead up to. Never while the window is open.
+        filed_at = None
+        if not live and state == "filed" and pd.notna(row.get("t0_utc")):
+            filed_at = dt.datetime.fromtimestamp(int(row["t0_utc"]),
+                                                 dt.timezone.utc)
+
+        def marks(f: go.Figure) -> None:
+            f.add_vline(x=marker, line_dash="dash", line_color=sev, line_width=1.4)
+            if filed_at is not None:
+                f.add_vline(x=filed_at, line_dash="solid",
+                            line_color=ui.CONTROL, line_width=1.4)
+
         ui.section("Price and volume",
-                   "Hourly bars for the 30 days before the flag. The dashed "
-                   "line is the flagged hour.")
+                   "Hourly bars for the 30 days before the flag"
+                   + ("" if live else f" and the {hours} hours after it")
+                   + ". The dashed line is the flagged hour"
+                   + (f"; the solid grey line is when the 8-K that followed "
+                      f"became public ({ui.utc(int(row['t0_utc']))})"
+                      if filed_at is not None else "") + ". Times are UTC.")
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ts, y=price["close"], mode="lines",
                                  name="close", line=dict(color=ui.SERIES, width=1.5)))
-        fig.add_vline(x=marker, line_dash="dash", line_color=sev, line_width=1.4)
+        marks(fig)
         st.plotly_chart(ui.chart(fig, 230, "close"), width="stretch")
 
         vol = go.Figure()
         vol.add_trace(go.Bar(x=ts, y=price["volume"], marker_color=ui.DIM))
-        vol.add_vline(x=marker, line_dash="dash", line_color=sev, line_width=1.4)
+        marks(vol)
         st.plotly_chart(ui.chart(vol, 150, "volume"), width="stretch")
 
         # The z-score band, computed with the SAME function the detector used.
@@ -494,7 +512,7 @@ def ticker_detail() -> None:
             if pd.notna(row.get("threshold")) and row["detector"] == "volume_zscore":
                 band.add_hline(y=float(row["threshold"]), line_dash="dot",
                                line_color=sev, line_width=1.2)
-            band.add_vline(x=marker, line_dash="dash", line_color=sev, line_width=1.4)
+            marks(band)
             st.plotly_chart(ui.chart(band, 165, "standard deviations"),
                             width="stretch")
 
@@ -778,6 +796,9 @@ def evaluation() -> None:
             f"**If a simple baseline wins, it is shown winning** — that is the "
             f"finding, not something to hide.")
 
+    _event_study()
+    _item_lift(table, variant)
+
     ui.section("Calibration",
                "When a detector says 70%, is it right about 70% of the time? A "
                "detector can rank well and still be badly calibrated, which "
@@ -807,6 +828,332 @@ def evaluation() -> None:
     without = data.comparison(_P8_WITHOUT)
     if not with_news.empty and not without.empty:
         _news_ablation(without, with_news, variant)
+
+
+def _event_study() -> None:
+    """The footprint itself: trading around t0, against a matched control.
+
+    Every other figure on this screen scores a detector; this one scores
+    nothing, so a reader can see what the detectors are hunting. Read off
+    `src.eval.event_study` — train and validation events only, the test set
+    untouched — and drawn as small multiples, one per slice, so scheduled and
+    unscheduled are never on one line (rule 4). The control is the same stock
+    ten sessions earlier at the same time of day: without it the opening
+    bar's ordinary volume would pass for a footprint.
+    """
+    t = data.event_study()
+    if t.empty:
+        ui.note("No event-study table yet. Build it with "
+                "`python -m src.eval.event_study`.")
+        return
+    t = t[t["bar"].notna()]
+    ui.section(
+        "The footprint itself — trading around t₀",
+        "Every usable train and validation event lined up on its own t₀ (the "
+        "news-adjusted clock), hourly bars counted in trading time: bar 0 "
+        "contains or follows t₀, bar −1 is the last hour before it. The grey "
+        "line is the same stock ten sessions earlier at the same time of day, "
+        "which is what \"unusual\" has to beat. Test events are not read.")
+
+    from plotly.subplots import make_subplots
+
+    def facet(col: str, ylab: str, scale: float, fmt: str) -> go.Figure:
+        fig = make_subplots(rows=1, cols=2, shared_yaxes=True,
+                            horizontal_spacing=0.04,
+                            subplot_titles=("Unscheduled — the target",
+                                            "Scheduled — results, dated ahead"))
+        for c, (sl, colour, dash) in enumerate(
+                (("unscheduled", ui.SERIES, "solid"),
+                 ("scheduled", ui.SCHED, "dash")), start=1):
+            ev = t[t["slice"] == sl].sort_values("bar")
+            ctl = t[t["slice"] == f"{sl} control"].sort_values("bar")
+            n_ev = int(ev["n_events"].max())
+            fig.add_trace(go.Scatter(
+                x=ctl["bar"], y=ctl[col] * scale, mode="lines",
+                name="same stock, 10 sessions earlier", legendgroup="control",
+                showlegend=c == 1,
+                line=dict(color=ui.CONTROL, width=1.5, dash="dot"),
+                hovertemplate=f"control: %{{y:{fmt}}}<extra></extra>"),
+                row=1, col=c)
+            fig.add_trace(go.Scatter(
+                x=ev["bar"], y=ev[col] * scale, mode="lines",
+                name=f"{sl} events ({n_ev:,})",
+                line=dict(color=colour, width=2, dash=dash),
+                hovertemplate=f"{sl}: %{{y:{fmt}}}<extra></extra>"),
+                row=1, col=c)
+            fig.add_vline(x=-0.5, line_dash="dash", line_color=ui.MARKER,
+                          line_width=1, row=1, col=c)
+        fig = ui.chart(fig, 300, ylab, legend=True)
+        fig.update_xaxes(title=dict(text="trading-hour bars from t₀",
+                                    font=dict(size=11)))
+        # Legend under the plots: above them it collides with the panel titles.
+        fig.update_layout(margin=dict(t=52, b=84, l=6, r=6),
+                          legend=dict(orientation="h", yanchor="top",
+                                      y=-0.36, x=0))
+        return fig
+
+    st.plotly_chart(facet("share_above_threshold",
+                          "% of events with unusual volume", 100, ".1f"),
+                    width="stretch")
+
+    def at(sl: str, bar: int, col: str) -> float:
+        r = t[(t["slice"] == sl) & (t["bar"] == bar)]
+        return float(r[col].iloc[0]) if len(r) else float("nan")
+
+    thr = float(t["threshold"].iloc[0])
+    u, uc = (at("unscheduled", -1, "share_above_threshold"),
+             at("unscheduled control", -1, "share_above_threshold"))
+    sch, sc = (at("scheduled", -1, "share_above_threshold"),
+               at("scheduled control", -1, "share_above_threshold"))
+    u0 = at("unscheduled", 0, "share_above_threshold")
+    n = {sl: int(t.loc[t["slice"] == sl, "n_events"].max())
+         for sl in ("unscheduled", "unscheduled control", "scheduled",
+                    "scheduled control")}
+    st.caption(
+        f"\"Unusual\" is the volume z-score detector's own threshold "
+        f"({thr:.3f} sd). In the last hour before t₀, **{u:.1%} of unscheduled "
+        f"events** clear it against {uc:.1%} for the same stocks ten sessions "
+        f"earlier — about {u / uc:.1f}× — and {u0:.1%} in the bar that holds "
+        f"or follows t₀. Scheduled events: {sch:.1%} against {sc:.1%}. The "
+        f"saw-tooth every seven bars is the opening hour, present in the "
+        f"control too; read the gap between the lines, not their shape. The "
+        f"dashed line is t₀. Events: {n['unscheduled']:,} unscheduled and "
+        f"{n['scheduled']:,} scheduled; controls: {n['unscheduled control']:,} "
+        f"and {n['scheduled control']:,} — fewer, because a control window "
+        f"holding another event of the same stock is dropped.")
+    with st.expander("Median volume z-score and price move, same layout"):
+        st.plotly_chart(facet("volume_z_median", "median volume z-score (sd)",
+                              1, "+.2f"), width="stretch")
+        st.plotly_chart(facet("abs_rel_ret_median_pct",
+                              "median |1-bar move vs SPY| (%)", 1, ".2f"),
+                        width="stretch")
+        st.caption("The price move is absolute, because news moves prices both "
+                   "ways and a signed average cancels to nothing. It barely "
+                   "separates from the control before t₀ and jumps at it: the "
+                   "footprint before an announcement is in volume, not price.")
+
+
+def _item_lift(table: pd.DataFrame, variant: str) -> None:
+    """Lift by 8-K item type, beside the random-noise range on the same type.
+
+    The item codes are the answer key's free labels (frozen decision): this
+    asks which kinds of event leave a footprint. Types with few events are
+    left off rather than drawn — a lift on two events is noise with a decimal
+    point — and the hit count is printed beside every dot.
+    """
+    items = table[(table["t0_variant"] == variant)
+                  & table["slice"].str.startswith("item ")]
+    if items.empty or "n_positive" not in items:
+        return
+    floor = int(data.config()["dashboard"]["item_min_events"])
+    detectors = [d for d in ("cusum", "volume_zscore", "rl_policy[s43]",
+                             "gradient_boosting") if d in set(items["baseline"])]
+    if not detectors:
+        return
+    ui.section("Which kinds of event leave a footprint",
+               f"Lift by 8-K item type, for item types with at least {floor} "
+               f"events. The grey bar is the range pure random noise reaches "
+               f"on the same type: a dot inside it is no finding.")
+    who = st.selectbox("Detector", detectors, key="item_detector")
+    d = items[items["baseline"] == who]
+    d = d[d["n_positive"] >= floor].copy()
+    if d.empty:
+        st.caption("No item type has enough events in this table.")
+        return
+    noise = items[items["baseline"].str.startswith("random_noise")]
+    rng = noise.groupby("slice")["lift"].agg(["min", "max"])
+    d = d.join(rng, on="slice").sort_values("lift")
+    d["hits"] = (d["precision"] * d["n_alerts"]).round().astype(int)
+    codes = {str(c) for c in data.config()["items"]["scheduled"]}
+    d["code"] = d["slice"].str.replace("item ", "", regex=False)
+    d["kind"] = d["code"].map(lambda c: "scheduled" if c in codes else "unscheduled")
+    names = {str(k): v for k, v in
+             (data.config()["items"].get("names") or {}).items()}
+    label = (d["code"] + " " + d["code"].map(lambda c: names.get(c, ""))
+             + " · " + d["n_positive"].map(lambda n: f"{n:,} events"))
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=label, x=d["max"] - d["min"], base=d["min"], orientation="h",
+        marker_color=ui.DIM, name="random noise range",
+        hovertemplate="noise %{base:.2f}–%{x:.2f}<extra></extra>"))
+    for kind, colour, sym in (("unscheduled", ui.SERIES, "circle"),
+                              ("scheduled", ui.SCHED, "diamond")):
+        k = d[d["kind"] == kind]
+        if k.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            y=label[k.index], x=k["lift"], mode="markers+text",
+            name=f"{who} — {kind}",
+            marker=dict(color=colour, size=11, symbol=sym),
+            text=k.apply(lambda r: f"{r['lift']:.1f}× · {r['hits']} hits", axis=1),
+            textposition="middle right", textfont=dict(size=11),
+            hovertemplate="%{x:.2f}× the floor<extra></extra>"))
+    fig.add_vline(x=1, line_dash="dot", line_color=ui.CONTROL, line_width=1)
+    fig = ui.chart(fig, 110 + 34 * len(d), "", legend=True)
+    fig.update_layout(hovermode="closest", barmode="overlay",
+                      margin=dict(t=24, b=80, l=6, r=90), legend=dict(orientation="h", yanchor="top", y=-0.3, x=0))
+    # Room on the right for the label beside the largest dot.
+    fig.update_xaxes(title=dict(text="lift vs the do-nothing floor (×)",
+                                font=dict(size=11)),
+                     range=[0, float(max(d["lift"].max(), d["max"].max())) * 1.3])
+    st.plotly_chart(fig, width="stretch")
+    st.caption(
+        "One event can carry several item codes, so the types overlap and do "
+        "not add up to the slices above. Item 2.02 is results — scheduled, "
+        "dated weeks ahead — and is marked apart. The hit count is how many "
+        "budgeted alerts landed before an event of that type: a lift built on "
+        "a dozen hits moves a lot with one more or one fewer. The dotted line "
+        "is 1× — no better than raising nothing.")
+
+
+def _rate_bars(r: pd.DataFrame, order: list, xlab: str) -> go.Figure:
+    """Grouped bars of a live hit rate with its interval, split by kind."""
+    fig = go.Figure()
+    for kind, colour, pattern in (("unscheduled", ui.SERIES, ""),
+                                  ("scheduled", ui.SCHED, "/")):
+        k = r[r["kind"] == kind].set_index("group").reindex(order).dropna(
+            subset=["n"])
+        if k.empty:
+            continue
+        fig.add_trace(go.Bar(
+            x=list(k.index), y=k["rate"] * 100, name=f"followed by {kind} 8-K",
+            marker=dict(color=colour, pattern_shape=pattern),
+            error_y=dict(type="data", symmetric=False,
+                         array=(k["hi"] - k["rate"]) * 100,
+                         arrayminus=(k["rate"] - k["lo"]) * 100,
+                         color=ui.CONTROL, thickness=1.2, width=4),
+            text=[f"{v:.1f}%" for v in k["rate"] * 100],
+            textposition="outside", textfont=dict(size=11),
+            customdata=k[["hits", "n", "lo", "hi"]].to_numpy(),
+            hovertemplate=(f"{kind}: %{{customdata[0]:.0f}} of "
+                           f"%{{customdata[1]:,.0f}} (%{{y:.1f}}%%, "
+                           f"interval %{{customdata[2]:.1%%}}–"
+                           f"%{{customdata[3]:.1%%}})<extra></extra>")))
+    fig = ui.chart(fig, 290, "% of new flags", legend=True)
+    fig.update_layout(barmode="group", bargap=0.35, bargroupgap=0.06,
+                      hovermode="closest", margin=dict(t=24, b=80, l=6, r=6),
+                      legend=dict(orientation="h", yanchor="top", y=-0.3, x=0))
+    fig.update_xaxes(title=dict(text=xlab, font=dict(size=11)))
+    return fig
+
+
+def _live_charts(df: pd.DataFrame, hours: int) -> None:
+    """Three live charts an analyst can act on, each split and each honest
+    about its size: does a stronger alert pay off, is the rate holding up week
+    to week, and how much warning did a hit give.
+
+    All three count NEW flags with a closed, graded window, outside every
+    data incident (`data.rates_by`). Raw rows would let one sustained anomaly
+    carry a whole week — a single stock wrote 31 of one week's 58 graded
+    alerts.
+    """
+    level = float(data.config()["dashboard"]["rate_interval"])
+    ui.section(
+        "How the live rate behaves",
+        f"New flags only — one per stock per episode — with a closed "
+        f"{hours}-hour window, outside every data incident. Each bar or point "
+        f"carries a {level:.0%} interval (Wilson): the honest width of a rate "
+        f"measured on this many alerts.")
+
+    strength = df.apply(lambda r: ui.strength(r["score"], r["threshold"],
+                                              r["detector"])[1], axis=1)
+    by_band = data.rates_by(df, strength)
+    if by_band.empty:
+        ui.note("No graded new flags yet, so there is no rate to draw.")
+        return
+    order = ["Marginal", "Elevated", "Strong", "Extreme", "Policy flag"]
+    order = [o for o in order if o in set(by_band["group"])]
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Does a stronger alert pay off?**")
+        st.plotly_chart(_rate_bars(by_band, order, "strength band"),
+                        width="stretch")
+        n = by_band[by_band["kind"] == "unscheduled"].set_index("group")["n"]
+        st.caption(
+            "Hit rate by the strength band shown in the queue. "
+            + ", ".join(f"{g} {int(n[g]):,}" for g in order if g in n)
+            + " new flags. Where the intervals overlap, the bands do not "
+            "separate on this much data — a stronger alert is not yet shown to "
+            "be a better one, and the queue's order is a reading order, not a "
+            "probability.")
+
+    week = pd.to_datetime(df["ts_utc"], unit="s", utc=True).dt.tz_localize(None) \
+        .dt.to_period("W-SUN").dt.start_time
+    by_week = data.rates_by(df, week)
+    min_n = int(data.config()["dashboard"]["week_min_flags"])
+    thin = sorted(by_week.loc[by_week["n"] < min_n, "group"].unique())
+    by_week = by_week[by_week["n"] >= min_n]
+    with right:
+        st.markdown("**Is the rate holding up week to week?**")
+        fig = go.Figure()
+        for kind, colour, dash in (("unscheduled", ui.SERIES, "solid"),
+                                   ("scheduled", ui.SCHED, "dash")):
+            k = by_week[by_week["kind"] == kind].sort_values("group")
+            fig.add_trace(go.Scatter(
+                x=list(k["group"]) + list(k["group"])[::-1],
+                y=list(k["hi"] * 100) + list(k["lo"] * 100)[::-1],
+                mode="lines", fill="toself", fillcolor=ui.BAND,
+                line=dict(width=0), hoverinfo="skip", showlegend=False))
+            fig.add_trace(go.Scatter(
+                x=k["group"], y=k["rate"] * 100, mode="lines+markers",
+                name=f"followed by {kind} 8-K",
+                line=dict(color=colour, width=2, dash=dash),
+                marker=dict(size=8, color=colour),
+                customdata=k[["hits", "n"]].to_numpy(),
+                hovertemplate=(f"{kind}: %{{y:.1f}}%% "
+                               f"(%{{customdata[0]:.0f}} of "
+                               f"%{{customdata[1]:,.0f}})<extra></extra>")))
+        fig = ui.chart(fig, 300, "% of new flags", legend=True)
+        # The date ticks take two lines, so the legend sits lower here.
+        fig.update_layout(margin=dict(t=24, b=96, l=6, r=6),
+                          legend=dict(orientation="h", yanchor="top", y=-0.42, x=0))
+        fig.update_yaxes(rangemode="tozero")
+        fig.update_xaxes(title=dict(text="week of the flagged bar (UTC, "
+                                         "Monday start)", font=dict(size=11)))
+        st.plotly_chart(fig, width="stretch")
+        st.caption(
+            "Weekly rate with its interval shaded; a week's swing inside its "
+            "band is noise, not drift. "
+            + (f"Left off, with fewer than {min_n} graded new flags: weeks of "
+               + ", ".join(w.strftime("%Y-%m-%d") for w in thin)
+               + " — the monitor covered 400 stocks until 2026-09-07, and the "
+               "newest week fills in as its windows close."
+               if thin else ""))
+
+    g = data.counted(df)
+    if "episode_start" in g:
+        g = g[g["episode_start"]]
+    g = g[(g["outcome_state"] == "filed") & g["lead_trading_h"].notna()]
+    if g.empty or "filed_unscheduled" not in g:
+        return
+    st.markdown("**How much warning did a hit give?**")
+    fig = go.Figure()
+    for kind, col, colour, pattern in (
+            ("unscheduled", "filed_unscheduled", ui.SERIES, ""),
+            ("scheduled", "filed_scheduled", ui.SCHED, "/")):
+        k = g[g[col].fillna(0).astype(int) == 1]["lead_trading_h"]
+        if k.empty:
+            continue
+        fig.add_trace(go.Histogram(
+            x=k, xbins=dict(start=0, size=1), name=f"{kind} ({len(k):,}, "
+            f"median {k.median():.1f} h)",
+            marker=dict(color=colour, pattern_shape=pattern),
+            opacity=0.85, hovertemplate=f"{kind}: %{{y}} flags<extra></extra>"))
+    fig = ui.chart(fig, 260, "new flags", legend=True)
+    fig.update_layout(barmode="group", bargap=0.15, hovermode="closest",
+                      margin=dict(t=24, b=80, l=6, r=6), legend=dict(orientation="h", yanchor="top", y=-0.3, x=0))
+    fig.update_xaxes(title=dict(text="lead time to the first 8-K that "
+                                     "followed (trading hours)",
+                                font=dict(size=11)))
+    st.plotly_chart(fig, width="stretch")
+    st.caption(
+        f"Trading hours from the flagged bar to the first 8-K that followed, "
+        f"for new flags that were hits. The {hours}-hour outcome window is "
+        f"wall-clock, so no live lead can exceed about two sessions — the "
+        f"longest here is {g['lead_trading_h'].max():.1f} trading hours — and "
+        f"this is not comparable to the offline median lead, which is measured "
+        f"over a 48-bar window.")
 
 
 def _news_ablation(without: pd.DataFrame, with_news: pd.DataFrame,
@@ -986,6 +1333,8 @@ def monitor_log() -> None:
         "the one it would overwrite. The monitor re-scores a rolling 48-bar "
         "window each run and suppresses re-detections by natural key, so a "
         "repeated scan writes nothing.")
+
+    _live_charts(df, hours)
 
     ui.section("The log", "Bar time and notice time are separate columns on "
                           "purpose: the monitor runs once a day after the "

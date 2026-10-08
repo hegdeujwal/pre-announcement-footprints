@@ -188,7 +188,8 @@ def section(title: str, explain: str = "") -> None:
         st.caption(explain)
 
 
-def chart(fig: go.Figure, height: int = 240, ylab: str = "") -> go.Figure:
+def chart(fig: go.Figure, height: int = 240, ylab: str = "",
+          legend: bool = False) -> go.Figure:
     """One chart template. Transparent, so the page theme shows through.
 
     No background colour is set, for the same reason the palette went: a white
@@ -198,7 +199,9 @@ def chart(fig: go.Figure, height: int = 240, ylab: str = "") -> go.Figure:
     fig.update_layout(
         height=height, margin=dict(t=14, b=30, l=6, r=6),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=False, hovermode="x unified",
+        showlegend=legend, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0,
+                    font=dict(size=11)),
         xaxis=dict(title="", showgrid=True, gridcolor="rgba(128,128,128,.18)",
                    zeroline=False, linecolor="rgba(128,128,128,.35)"),
         yaxis=dict(title=dict(text=ylab, font=dict(size=11)), showgrid=True,
@@ -240,6 +243,17 @@ def budget_bar(b: dict) -> None:
 SERIES = "#4C8DBF"
 MARKER = "#D2705A"
 DIM = "rgba(128,128,128,.45)"
+#: The second categorical slot, for charts that split scheduled from
+#: unscheduled: SERIES carries unscheduled (the headline), this carries
+#: scheduled. Checked with the dataviz validator against SERIES on both
+#: surfaces — CVD ΔE 14.2, normal-vision 16.8. It sits under 3:1 on a light
+#: page, so every chart using it labels its lines; the scheduled series is
+#: also drawn dashed, so the split never rests on colour alone. Not MARKER:
+#: that colour means alert severity, and carries no other meaning.
+SCHED = "#1baf7a"
+#: A matched control or a null: neutral, never a series hue.
+CONTROL = "rgba(128,128,128,.85)"
+BAND = "rgba(128,128,128,.14)"
 
 
 def masthead(subtitle: str) -> None:

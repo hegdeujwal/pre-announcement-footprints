@@ -485,3 +485,40 @@ def test_the_log_labels_incident_rows_and_the_top_line_skips_them():
     assert (log["outcome"] == "Data incident — not counted").sum() == int(df["incident"].sum())
     sound = int(df.loc[~df["incident"], "ts_utc"].max())
     assert ui.utc(sound).lower() in _text(at)
+
+
+def test_wilson_interval_matches_the_textbook_value():
+    from app import data
+
+    lo, hi = data.wilson(5, 100, 0.95)
+    assert abs(lo - 0.0215) < 0.001 and abs(hi - 0.1118) < 0.001
+    assert data.wilson(0, 0, 0.95) != data.wilson(0, 0, 0.95)  # nan pair
+    assert data.wilson(0, 20, 0.95)[0] == 0.0
+
+
+def test_live_rates_count_new_flags_outside_incidents_only():
+    """One sustained anomaly wrote 31 of one week's 58 graded rows; the rate
+    charts count one flag per episode, and never an incident row."""
+    import pandas as pd
+
+    from app import data
+
+    df = data.alerts_with_outcomes()
+    r = data.rates_by(df, pd.Series("all", index=df.index))
+    if r.empty:
+        pytest.skip("no graded new flags in this log")
+    want = data.counted(df)
+    want = want[want["episode_start"]
+                & want["outcome_state"].isin(["filed", "none"])]
+    assert set(r["n"]) == {len(want)}
+    assert set(r["kind"]) == {"scheduled", "unscheduled"}
+    assert (r["lo"] <= r["rate"]).all() and (r["rate"] <= r["hi"]).all()
+
+
+def test_the_new_statistical_sections_render_split():
+    body = _text(_run("Evaluation"))
+    assert "the footprint itself" in body
+    assert "ten sessions earlier" in body
+    live = _text(_run("Live monitor log"))
+    assert "how the live rate behaves" in live
+    assert "new flags only" in live
