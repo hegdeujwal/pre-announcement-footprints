@@ -187,6 +187,19 @@ items:
     "5.03": "charter or bylaws amended"
     "7.01": "Regulation FD disclosure"
     "8.01": "other events"
+    "1.03": "bankruptcy or receivership"
+    "1.04": "mine safety"
+    "1.05": "cybersecurity incident"
+    "2.04": "debt acceleration triggered"
+    "3.01": "listing standard notice"
+    "4.02": "past financials not to be relied on"
+    "5.01": "change in control"
+    "5.04": "pension blackout"
+    "5.05": "code of ethics changed"
+    "5.06": "shell company status changed"
+    "5.07": "shareholder vote results"
+    "5.08": "shareholder nominations"
+    "9.01": "exhibits attached"
   # 9.01 is an attachment marker, not an event type — it rides along with other
   # items and would dominate the label distribution if kept.
   # 5.07 (shareholder vote results) is excluded as routine paperwork, per

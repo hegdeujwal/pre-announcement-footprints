@@ -618,16 +618,43 @@ def news_through() -> int | None:
 
 
 @st.cache_data(ttl=300)
+def item_labels(items) -> str:
+    """'5.02,7.01,9.01' -> '5.02 director or officer change · 7.01 …'.
+
+    Names come from `items.names` in config, shortened from the SEC's own Form
+    8-K item titles. A code with no name (the pre-2004 numbering still turns up
+    in old filings) is shown as the bare code rather than guessed at.
+    """
+    names = {str(k): v for k, v in (config()["items"].get("names") or {}).items()}
+    codes = [c.strip() for c in str(items or "").split(",") if c.strip()]
+    if not codes:
+        return "—"
+    return " · ".join(f"{c} {names[c]}" if c in names else c for c in codes)
+
+
+def filing_url(cik, accession_no: str) -> str | None:
+    """The filing's index page on sec.gov — the document itself, one click away.
+
+    Built from `edgar.archives_base`, the same root the collector reads, so the
+    dashboard links to exactly what the answer key was built from.
+    """
+    if cik is None or pd.isna(cik) or not accession_no:
+        return None
+    base = config()["edgar"]["archives_base"]
+    return (f"{base}/data/{int(cik)}/{accession_no.replace('-', '')}/"
+            f"{accession_no}-index.htm")
+
+
 def filings(ticker: str, limit: int = 20) -> pd.DataFrame:
     cfg = config()
     if not db_present():
-        return pd.DataFrame(columns=["accession_no", "form", "items",
+        return pd.DataFrame(columns=["accession_no", "cik", "form", "items",
                                      "acceptance_utc"])
     forms = cfg["edgar"]["forms"]
     marks = ",".join("?" * len(forms))
     with _conn() as conn:
         return pd.read_sql_query(
-            f"SELECT accession_no, form, items, acceptance_utc FROM filings "
+            f"SELECT accession_no, cik, form, items, acceptance_utc FROM filings "
             f"WHERE ticker = ? AND form IN ({marks}) "
             f"AND acceptance_utc IS NOT NULL "
             f"ORDER BY acceptance_utc DESC LIMIT ?",

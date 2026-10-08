@@ -522,3 +522,19 @@ def test_the_new_statistical_sections_render_split():
     live = _text(_run("Live monitor log"))
     assert "how the live rate behaves" in live
     assert "new flags only" in live
+
+
+def test_filings_say_what_they_were_and_link_to_the_sec():
+    """An item code alone ('5.02') means nothing to a reader; the label and a
+    link to the filing let the screen say what was announced."""
+    from app import data
+
+    assert data.item_labels("5.02,7.01,9.01") == (
+        "5.02 director or officer change · 7.01 Regulation FD disclosure · "
+        "9.01 exhibits attached")
+    assert data.item_labels("12") == "12"            # no guessed name
+    assert data.item_labels(None) == "—"
+    assert data.filing_url("0000063276", "0001193125-26-408403") == (
+        "https://www.sec.gov/Archives/edgar/data/63276/000119312526408403/"
+        "0001193125-26-408403-index.htm")
+    assert data.filing_url(None, "x") is None

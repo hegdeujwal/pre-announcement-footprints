@@ -552,15 +552,31 @@ def ticker_detail() -> None:
                     f'<span style="opacity:.65;font-size:.8rem">*{art["source_name"]}*</span></div>',
                     unsafe_allow_html=True)
     with b:
-        ui.section("Filing history", "Past 8-K filings with their item codes.")
+        ui.section("Filing history",
+                   "Past 8-K filings: what each one was, from its SEC item "
+                   "codes, and a link to the filing itself on sec.gov.")
         f = data.filings(ticker)
         if f.empty:
             st.caption("No 8-K filings on record.")
         else:
             st.dataframe(pd.DataFrame({
                 "accepted (UTC)": f["acceptance_utc"].map(lambda t: ui.utc(t, False)),
-                "items": f["items"].fillna("—"),
-            }), width="stretch", hide_index=True, height=320)
+                "what it was": f["items"].map(data.item_labels),
+                "filing": [data.filing_url(c, a)
+                           for c, a in zip(f["cik"], f["accession_no"])],
+            }), width="stretch", hide_index=True, height=320,
+                column_config={
+                    "what it was": st.column_config.TextColumn(width="large"),
+                    "filing": st.column_config.LinkColumn(
+                        "filing", display_text="open on sec.gov",
+                        help="The SEC's own record of this filing: the 8-K and "
+                             "every exhibit, as filed."),
+                })
+            st.caption("Item names are shortened from the SEC's Form 8-K item "
+                       "titles. 2.02 (results) is scheduled; the rest are "
+                       "treated as unscheduled unless excluded. Opening a "
+                       "filing shows what was announced in the company's own "
+                       "words.")
 
 
 def _feature_table(row: pd.Series, price: pd.DataFrame) -> None:
