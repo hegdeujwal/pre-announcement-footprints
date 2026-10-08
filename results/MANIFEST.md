@@ -9,3 +9,4 @@ Copied from `/home/ujwal/Pros/pre-announcement-footprints/data/processed/` by `s
 | `phase10/CORRECTION-NOTE.md` | 2,351 | `945bf612ffbc663121f0313f5f4764c6827a08b71f54fd7d923a476fd36c35a3` |
 | `baseline-comparison-val-r2.csv` | 210,727 | `51d0fbca84295e5928d1c3c8a227e998039cdb9a322340a30836d7ef39345b52` |
 | `p8-with-news-val-r2.csv` | 128,612 | `d23d2e690c82c3aeee6c644a220989fa9ba726f05629167893fde18db73f65cf` |
+| `event-study-trainval.csv` | 28,168 | `b74ae5bbea314b0b2843fc1433891cd48f9dbb39d54433f6ec5249441a1348af` |

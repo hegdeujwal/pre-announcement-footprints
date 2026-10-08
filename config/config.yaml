@@ -24,6 +24,7 @@ results_export:
   - phase10/CORRECTION-NOTE.md
   - baseline-comparison-val-r2.csv
   - p8-with-news-val-r2.csv
+  - event-study-trainval.csv
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps
@@ -846,3 +847,18 @@ logging:
   # failure mode was HTTP 200 responses carrying redirect HTML — pipelines
   # looked healthy while writing nothing for days.
   fail_on_zero_records: true
+
+# The event study (src/eval/event_study.py): every usable train/validation
+# event lined up on its own t0, hourly bars counted in trading time. It scores
+# no detector; it shows the footprint the detectors are hunting. Five sessions
+# before t0 and two after, at seven bars a session. Test events are never read.
+event_study:
+  pre_bars: 35
+  post_bars: 14
+  # The matched control: the same stock, aligned the same way, ten sessions
+  # earlier — whole sessions, so every bar keeps its time of day. Volume has a
+  # strong intraday shape and bar 0 is usually an opening bar; without this
+  # the open alone would read as a footprint.
+  control_shift_bars: 70
+  out: "event-study-trainval.csv"
+
