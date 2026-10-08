@@ -561,9 +561,11 @@ def ticker_detail() -> None:
         else:
             st.dataframe(pd.DataFrame({
                 "accepted (UTC)": f["acceptance_utc"].map(lambda t: ui.utc(t, False)),
-                "what it was": f["items"].map(data.item_labels),
+                # Before the long description, so it is never scrolled off
+                # the right edge of the table.
                 "filing": [data.filing_url(c, a)
                            for c, a in zip(f["cik"], f["accession_no"])],
+                "what it was": f["items"].map(data.item_labels),
             }), width="stretch", hide_index=True, height=320,
                 column_config={
                     "what it was": st.column_config.TextColumn(width="large"),
