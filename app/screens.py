@@ -521,6 +521,7 @@ def ticker_detail() -> None:
                "ticker over the 30 days before the flag. A number alone means "
                "little — the comparison is what makes it mean something.")
     _feature_table(row, price)
+    _what_followed(row, state, live)
 
     a, b = st.columns(2)
     with a:
@@ -579,6 +580,60 @@ def ticker_detail() -> None:
                        "treated as unscheduled unless excluded. Opening a "
                        "filing shows what was announced in the company's own "
                        "words.")
+
+
+def _what_followed(row: pd.Series, state: str, live: bool) -> None:
+    """The filing that followed this alert, in the company's own words.
+
+    Shown only once the outcome window has closed, by the same rule that hides
+    the bars after the flag: revealing what happened next while it is still
+    open would turn a surveillance tool into a hindsight demo. The quotes are
+    the opening sentences of each item, taken verbatim from the 8-K by the
+    nightly run (src/live/excerpts.py) — never written by this tool.
+    """
+    hours = data.window_hours()
+    ui.section("What followed",
+               f"The 8-K filed within {hours} hours (wall-clock) of this alert, "
+               f"quoted from the filing itself.")
+    if live or state == "open":
+        st.caption(f"The {hours}-hour window is still open, so what followed is "
+                   f"not shown yet.")
+        return
+    if state == "none":
+        st.caption(f"No 8-K followed within {hours} hours. That is the outcome "
+                   f"for most alerts: a footprint is a reason to look, not a "
+                   f"prediction.")
+        return
+    if state != "filed":
+        st.caption("No outcome is on record for this alert yet.")
+        return
+    acc = row.get("accession_no")
+    filed = (ui.utc(int(row["t0_utc"])) if pd.notna(row.get("t0_utc")) else "—")
+    lead = row.get("lead_trading_h")
+    lead_txt = (f", {float(lead):.1f} trading hours after the flagged bar"
+                if pd.notna(lead) else "")
+    st.markdown(f"**8-K made public {filed}**{lead_txt} &middot; "
+                f"{data.item_labels(row.get('item_code'))}")
+    info = data.what_followed(acc)
+    if info and info["quotes"]:
+        names = {str(k): v for k, v in
+                 (data.config()["items"].get("names") or {}).items()}
+        for code, quote in info["quotes"]:
+            st.markdown(f"**Item {code}** &mdash; {names.get(code, '')}\n\n"
+                        f"> {quote}")
+    elif info and info["note"]:
+        st.caption(f"No quotation: {info['note']}.")
+    else:
+        st.caption("This filing has not been read yet; the nightly run quotes "
+                   "it. Its item codes are above.")
+    url = (info or {}).get("url")
+    if url:
+        st.markdown(f"[Open the full filing on sec.gov]({url})")
+    st.caption("Quoted word for word from the filing's own text, first "
+               "sentences of each item; legal boilerplate is skipped. A filing "
+               "following an alert does not show the alert was right: filings "
+               "also follow at random hours, which the live monitor log "
+               "measures against chance.")
 
 
 def _feature_table(row: pd.Series, price: pd.DataFrame) -> None:

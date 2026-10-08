@@ -200,6 +200,37 @@ items:
     "5.07": "shareholder vote results"
     "5.08": "shareholder nominations"
     "9.01": "exhibits attached"
+  # The SEC's official Form 8-K item titles. Used only to strip the heading
+  # from the start of an item's text when quoting a filing on the dashboard
+  # (src/live/excerpts.py); the short display names are `names` above.
+  titles:
+    "1.01": "Entry into a Material Definitive Agreement"
+    "1.02": "Termination of a Material Definitive Agreement"
+    "1.03": "Bankruptcy or Receivership"
+    "1.04": "Mine Safety - Reporting of Shutdowns and Patterns of Violations"
+    "1.05": "Material Cybersecurity Incidents"
+    "2.01": "Completion of Acquisition or Disposition of Assets"
+    "2.02": "Results of Operations and Financial Condition"
+    "2.03": "Creation of a Direct Financial Obligation or an Obligation under an Off-Balance Sheet Arrangement of a Registrant"
+    "2.04": "Triggering Events That Accelerate or Increase a Direct Financial Obligation or an Obligation under an Off-Balance Sheet Arrangement"
+    "2.05": "Costs Associated with Exit or Disposal Activities"
+    "2.06": "Material Impairments"
+    "3.01": "Notice of Delisting or Failure to Satisfy a Continued Listing Rule or Standard; Transfer of Listing"
+    "3.02": "Unregistered Sales of Equity Securities"
+    "3.03": "Material Modification to Rights of Security Holders"
+    "4.01": "Changes in Registrant's Certifying Accountant"
+    "4.02": "Non-Reliance on Previously Issued Financial Statements or a Related Audit Report or Completed Interim Review"
+    "5.01": "Changes in Control of Registrant"
+    "5.02": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers"
+    "5.03": "Amendments to Articles of Incorporation or Bylaws; Change in Fiscal Year"
+    "5.04": "Temporary Suspension of Trading Under Registrant's Employee Benefit Plans"
+    "5.05": "Amendments to the Registrant's Code of Ethics, or Waiver of a Provision of the Code of Ethics"
+    "5.06": "Change in Shell Company Status"
+    "5.07": "Submission of Matters to a Vote of Security Holders"
+    "5.08": "Shareholder Director Nominations"
+    "7.01": "Regulation FD Disclosure"
+    "8.01": "Other Events"
+    "9.01": "Financial Statements and Exhibits"
   # 9.01 is an attachment marker, not an event type — it rides along with other
   # items and would dominate the label distribution if kept.
   # 5.07 (shareholder vote results) is excluded as routine paperwork, per
@@ -744,6 +775,33 @@ live:
   # and its test set spent — and reported as a limitation.
   retime_from: "2026-08-01"
   retime_batch: 5000
+  # "What followed" on the dashboard: for every filing an alert was graded
+  # against, the opening sentences of each substantive item, quoted word for
+  # word from the 8-K (src/live/excerpts.py). Display only — nothing scores,
+  # grades or trains on it. Exhibits (9.01) carry no announcement of their
+  # own. Sentences matching `boilerplate` (legal furnishing language and
+  # cross-references) are skipped, because they say nothing about the event.
+  excerpts:
+    max_chars: 600
+    batch: 500
+    skip_items: ["9.01"]
+    boilerplate:
+      - "incorporated (herein )?by reference"
+      - "incorporated (in|into) .{0,60}by reference"
+      - "does not purport to be complete"
+      - "qualified in its entirety"
+      - "shall not be deemed"
+      - "is being furnished"
+      - "\\bfurnished\\b"
+      - "not (be )?deemed filed"
+      - "current expectations"
+      - "attached (hereto|herewith) as exhibit"
+      - "is (filed|attached) as exhibit"
+      - "information (contained|set forth) in item"
+      - "forward-looking statements"
+      - "current beliefs and expectations"
+      - "subject to (certain )?risks and uncertainties"
+      - "risks, uncertainties"
   # How many of the most recent STORED sessions each run fetches again, and
   # lets the fresh copy overwrite. Yahoo's intraday volumes for a session can
   # be wrong when first served and corrected later: on 2026-10-07 the run

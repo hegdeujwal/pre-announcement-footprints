@@ -356,6 +356,7 @@ jobs:
           git add live-log/alerts.csv
           [ -f live-log/outcomes.csv ] && git add live-log/outcomes.csv
           [ -f live-log/quarantine.csv ] && git add live-log/quarantine.csv
+          [ -f live-log/filing_excerpts.csv ] && git add live-log/filing_excerpts.csv
           if git diff --cached --quiet; then
             echo "no new alerts or outcomes to commit"
             exit 0

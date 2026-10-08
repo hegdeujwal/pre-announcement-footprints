@@ -538,3 +538,14 @@ def test_filings_say_what_they_were_and_link_to_the_sec():
         "https://www.sec.gov/Archives/edgar/data/63276/000119312526408403/"
         "0001193125-26-408403-index.htm")
     assert data.filing_url(None, "x") is None
+
+
+def test_what_followed_quotes_the_filing_and_links_it():
+    """The Mattel alert that preceded its CEO change, read on Ticker detail."""
+    from app import data
+
+    info = data.what_followed("0001193125-26-408403")
+    assert info is not None and info["url"].startswith("https://www.sec.gov/")
+    quotes = dict(info["quotes"])
+    assert "Roger Lynch" in quotes["5.02"]
+    assert data.what_followed("no-such-filing") is None

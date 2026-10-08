@@ -58,6 +58,10 @@ DEFAULT_OUTCOMES_CSV = "live-log/outcomes.csv"
 #: for the same reason as the two files above: the database is a cache.
 DEFAULT_QUARANTINE_CSV = "live-log/quarantine.csv"
 
+#: What each followed filing announced, quoted from the filing — the
+#: dashboard's "What followed" panel. Display only.
+DEFAULT_EXCERPTS_CSV = "live-log/filing_excerpts.csv"
+
 
 def run(cfg: dict, conn, max_tickers: int | None = None,
         fetch: bool = True, log_csv: str | None = DEFAULT_LOG_CSV,
@@ -65,7 +69,8 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
         outcomes_csv: str | None = DEFAULT_OUTCOMES_CSV,
         quarantine_csv: str | None = DEFAULT_QUARANTINE_CSV,
         restate_from: int | None = None,
-        allow_open_market: bool = False) -> dict:
+        allow_open_market: bool = False,
+        excerpts_csv: str | None = DEFAULT_EXCERPTS_CSV) -> dict:
     """Fetch, scan, log, backfill outcomes, export. Returns a summary dict.
 
     Ordering matters. Outcomes are backfilled **after** the new alerts are
@@ -152,6 +157,16 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     # After logging, so a filing that lands in the same run is picked up.
     result["outcomes"] = backfill(cfg, conn)
 
+    # Quote what each newly followed filing announced. After grading, because
+    # it only ever attaches to an alert whose outcome is already decided; and
+    # only when fetching, because it needs EDGAR.
+    if excerpts_csv:
+        from src.live import excerpts
+        excerpts.import_csv(conn, excerpts_csv)
+        result["excerpts"] = excerpts.backfill(cfg, conn) if fetch else None
+        result["exported_excerpts"] = excerpts.export_csv(conn, excerpts_csv)
+        result["excerpts_csv"] = str(excerpts_csv)
+
     # The chain is verified on every run rather than on demand: a break found
     # weeks later is a break nobody can date.
     result["chain"] = {k: v["ok"] for k, v in verify_chain(conn).items()}
@@ -232,6 +247,14 @@ def render(result: dict) -> str:
     if "exported_outcomes" in result:
         lines.append(f"              : {result['exported_outcomes']:,} outcomes "
                      f"-> {result['outcomes_csv']}")
+    ex = result.get("excerpts")
+    if ex:
+        lines.append(f"filing quotes : {ex['fetched']} filings read, "
+                     f"{ex['quoted']} quoted"
+                     + (f", {ex['failed']} not fetched" if ex["failed"] else ""))
+    if "exported_excerpts" in result:
+        lines.append(f"              : {result['exported_excerpts']:,} quote rows "
+                     f"-> {result['excerpts_csv']}")
     if "exported_quarantine" in result:
         lines.append(f"              : {result['exported_quarantine']:,} quarantined "
                      f"sessions -> {result['quarantine_csv']}")
@@ -251,6 +274,8 @@ def main() -> None:
                     help="where to export the durable log")
     ap.add_argument("--outcomes-csv", default=DEFAULT_OUTCOMES_CSV,
                     help="where to export the log's graded outcomes")
+    ap.add_argument("--excerpts-csv", default=DEFAULT_EXCERPTS_CSV,
+                    help="where to export the quoted filing excerpts")
     ap.add_argument("--quarantine-csv", default=DEFAULT_QUARANTINE_CSV,
                     help="where to export the volume check's quarantine record")
     ap.add_argument("--as-of", type=int, default=None)
@@ -267,6 +292,7 @@ def main() -> None:
                  fetch=not args.no_fetch, log_csv=args.log_csv,
                  as_of=args.as_of, outcomes_csv=args.outcomes_csv,
                  quarantine_csv=args.quarantine_csv,
+                 excerpts_csv=args.excerpts_csv,
                  restate_from=(date_str_to_ts(args.restate_from)
                                if args.restate_from else None),
                  allow_open_market=args.allow_open_market)

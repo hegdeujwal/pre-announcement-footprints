@@ -26,6 +26,7 @@ REPO = Path(__file__).resolve().parents[1]
 ALERT_LOG = REPO / "live-log" / "alerts.csv"
 OUTCOME_LOG = REPO / "live-log" / "outcomes.csv"
 QUARANTINE_LOG = REPO / "live-log" / "quarantine.csv"
+EXCERPT_LOG = REPO / "live-log" / "filing_excerpts.csv"
 
 
 @st.cache_data(ttl=300)
@@ -630,6 +631,34 @@ def item_labels(items) -> str:
     if not codes:
         return "—"
     return " · ".join(f"{c} {names[c]}" if c in names else c for c in codes)
+
+
+@st.cache_data(ttl=300)
+def filing_excerpts() -> pd.DataFrame:
+    """What each followed filing announced, quoted from it (src/live/excerpts).
+
+    Read from the committed file, like the alert log, so a fresh clone with no
+    database still shows them.
+    """
+    if not EXCERPT_LOG.exists():
+        return pd.DataFrame(columns=["accession_no", "cik", "item", "excerpt",
+                                     "note"])
+    return pd.read_csv(EXCERPT_LOG, dtype=str, keep_default_na=False)
+
+
+def what_followed(accession_no) -> dict | None:
+    """Quotes and link for one filing, or None if it has not been read yet."""
+    if not isinstance(accession_no, str) or not accession_no:
+        return None
+    df = filing_excerpts()
+    rows = df[df["accession_no"] == accession_no]
+    if rows.empty:
+        return None
+    quotes = rows[rows["item"] != ""].sort_values("item")
+    cik = next((c for c in rows["cik"] if c), None)
+    return {"quotes": list(zip(quotes["item"], quotes["excerpt"])),
+            "note": next((n for n in rows["note"] if n), ""),
+            "url": filing_url(cik, accession_no)}
 
 
 def filing_url(cik, accession_no: str) -> str | None:

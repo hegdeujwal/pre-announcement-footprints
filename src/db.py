@@ -213,6 +213,20 @@ CREATE TABLE IF NOT EXISTS bar_quarantine (
   detected_utc INTEGER NOT NULL,
   PRIMARY KEY (ticker, interval, session_date)
 );
+
+-- What a followed filing announced, quoted from the filing itself
+-- (src/live/excerpts.py). Display only. item = '' with a note marks a filing
+-- that was fetched and had nothing quotable, or could not be fetched, so it
+-- is not fetched again.
+CREATE TABLE IF NOT EXISTS filing_excerpts (
+  accession_no TEXT NOT NULL,
+  cik TEXT,                      -- so the sec.gov link needs no other table
+  item TEXT NOT NULL,
+  excerpt TEXT,
+  fetched_utc INTEGER,
+  note TEXT,
+  PRIMARY KEY (accession_no, item)
+);
 """
 
 

@@ -53,7 +53,8 @@ def test_the_whole_cycle_runs_in_one_call(cfg, conn, tmp_path):
     out = tmp_path / "alerts.csv"
     result = run(cfg, conn, fetch=False, log_csv=str(out),
                  outcomes_csv=str(tmp_path / "o.csv"),
-                 quarantine_csv=str(tmp_path / "q.csv"))
+                 quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
 
     for key in ("bars_scored", "alerts_found", "alerts_new", "outcomes",
                 "chain", "log", "elapsed_s"):
@@ -66,7 +67,8 @@ def test_it_verifies_the_chain_every_run(cfg, conn, tmp_path):
     append(conn, [make(offset=i) for i in range(3)])
     result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
                  outcomes_csv=str(tmp_path / "o.csv"),
-                 quarantine_csv=str(tmp_path / "q.csv"))
+                 quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
     assert result["chain"]["cusum"] is True
 
 
@@ -77,7 +79,8 @@ def test_a_broken_chain_is_reported_not_swallowed(cfg, conn, tmp_path):
 
     result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
                  outcomes_csv=str(tmp_path / "o.csv"),
-                 quarantine_csv=str(tmp_path / "q.csv"))
+                 quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
     assert result["chain"]["cusum"] is False
 
 
@@ -86,7 +89,8 @@ def test_outcomes_are_backfilled_after_alerts_are_logged(cfg, conn, tmp_path):
     same run must both be accounted for."""
     result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
                  outcomes_csv=str(tmp_path / "o.csv"),
-                 quarantine_csv=str(tmp_path / "q.csv"))
+                 quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
     assert "outcomes" in result
     assert set(result["outcomes"]) >= {"scored", "filed", "pending"}
 
@@ -94,7 +98,8 @@ def test_outcomes_are_backfilled_after_alerts_are_logged(cfg, conn, tmp_path):
 def test_no_fetch_downloads_nothing(cfg, conn, tmp_path):
     result = run(cfg, conn, fetch=False, log_csv=str(tmp_path / "a.csv"),
                  outcomes_csv=str(tmp_path / "o.csv"),
-                 quarantine_csv=str(tmp_path / "q.csv"))
+                 quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
     assert result["bars_appended"] == 0
 
 
@@ -171,4 +176,5 @@ def test_a_run_while_the_market_is_open_is_refused(cfg, conn, tmp_path, monkeypa
     with pytest.raises(SystemExit, match="market is open"):
         catchup.run(cfg, conn, fetch=True, log_csv=str(tmp_path / "a.csv"),
                     outcomes_csv=str(tmp_path / "o.csv"),
-                    quarantine_csv=str(tmp_path / "q.csv"))
+                    quarantine_csv=str(tmp_path / "q.csv"),
+                 excerpts_csv=str(tmp_path / "x.csv"))
