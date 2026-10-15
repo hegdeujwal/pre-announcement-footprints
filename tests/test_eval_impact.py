@@ -21,3 +21,16 @@ def test_impact_slices_keep_every_quiet_window():
     assert set(out["impact low"].window_id) == {"W0", "W2"}
     assert set(out["impact high"].window_id) == {"W1", "W2"}
     assert out["impact mid"]["t0_utc"].notna().sum() == 0
+
+
+def test_impact_rows_split_by_schedule():
+    pred = windows([("A", True, "2.02"), ("B", True, "8.01"),
+                    ("C", False, None), ("D", False, None)], n=3)
+    pred["score"] = pred["volume_z"]
+    pred["action"] = "WAIT"
+    impacts = pd.Series({"W0": 0.01, "W1": 0.2})
+    rows = pd.DataFrame(I.impact_rows("x", pred, impacts, np.array([0.05, 0.1])))
+    got = set(zip(rows["schedule"], rows["slice"]))
+    assert ("scheduled", "impact low") in got and ("unscheduled", "impact high") in got
+    assert ("scheduled", "impact high") not in got
+    assert ("unscheduled", "impact low") not in got

@@ -73,40 +73,54 @@ def impact_slices(pred: pd.DataFrame, buckets: pd.Series) -> dict[str, pd.DataFr
 
 def impact_rows(name: str, pred: pd.DataFrame, impacts: pd.Series,
                 edges: np.ndarray) -> list[dict]:
-    """Per-bucket metrics for one detector, at its whole-frame operating point."""
+    """Per-bucket metrics for one detector, at its whole-frame operating point.
+
+    Split three ways — all, scheduled, unscheduled — because AGENTS.md rule 7
+    applies here as everywhere: a big earnings move and a big surprise move
+    are different questions.
+    """
     threshold = precision_at_alert_budget(pred).threshold
-    pos_ids = pred.loc[pred["t0_utc"].notna(), "window_id"].astype("object").unique()
-    present = impacts.reindex(pos_ids).dropna()
-    buckets = bucket_of(present, edges)
+    positive = pred["t0_utc"].notna()
+    sched = (pred.loc[positive].groupby("window_id", sort=False)["is_scheduled"]
+             .first().astype(bool))
+    windows = window_summary(pred)
 
     rows = []
-    for b, sliced in impact_slices(pred, buckets).items():
-        if not sliced["t0_utc"].notna().any():
-            continue
-        m = evaluate(sliced, threshold=threshold)
-        rows.append({"baseline": name, "slice": b,
-                     "n_positive": m["n_positive"], "precision": m["precision"],
-                     "recall": m["recall"],
-                     "median_lead_trading_h": m["median_lead_trading_h"]})
+    for schedule in ("all", "scheduled", "unscheduled"):
+        ids = sched.index if schedule == "all" else sched.index[
+            sched == (schedule == "scheduled")]
+        part = pred[~positive | pred["window_id"].isin(set(ids))]
+        present = impacts.reindex(ids.astype("object")).dropna()
+        buckets = bucket_of(present, edges)
+        for b, sliced in impact_slices(part, buckets).items():
+            if not sliced["t0_utc"].notna().any():
+                continue
+            m = evaluate(sliced, threshold=threshold)
+            rows.append({"baseline": name, "schedule": schedule, "slice": b,
+                         "n_positive": m["n_positive"],
+                         "precision": m["precision"], "recall": m["recall"],
+                         "median_lead_trading_h": m["median_lead_trading_h"]})
 
-    # Spearman over positives: final-bar score vs the move that followed.
-    windows = window_summary(pred)
-    pos = windows[windows["is_positive"]]
-    joined = pos.join(impacts, how="inner")
-    rho, p = (spearmanr(joined["peak_score"], joined["abs_return"])
-              if len(joined) > 2 else (np.nan, np.nan))
-    rows.append({"baseline": name, "slice": "spearman score~impact",
-                 "n_positive": len(joined), "precision": np.nan,
-                 "recall": np.nan, "median_lead_trading_h": np.nan,
-                 "spearman_rho": float(rho), "spearman_p": float(p)})
+        # Spearman over these positives: final-bar score vs the move after.
+        pos = windows[windows["is_positive"]]
+        pos = pos[pos.index.isin(set(ids))]
+        joined = pos.join(impacts.rename("abs_return"), how="inner")
+        rho, p = (spearmanr(joined["peak_score"], joined["abs_return"])
+                  if len(joined) > 2 else (np.nan, np.nan))
+        rows.append({"baseline": name, "schedule": schedule,
+                     "slice": "spearman score~impact",
+                     "n_positive": len(joined), "precision": np.nan,
+                     "recall": np.nan, "median_lead_trading_h": np.nan,
+                     "spearman_rho": float(rho), "spearman_p": float(p)})
     return rows
 
 
 def add_lift(table: pd.DataFrame, floor_name: str = "always_quiet") -> pd.DataFrame:
-    """Precision over the always-quiet floor of the SAME bucket."""
+    """Precision over the always-quiet floor of the SAME bucket and schedule."""
     floor = (table[table["baseline"] == floor_name]
-             .set_index("slice")["precision"])
+             .set_index(["schedule", "slice"])["precision"])
     table = table.copy()
-    table["lift"] = [p / floor.get(s, np.nan) if floor.get(s) else np.nan
-                     for p, s in zip(table["precision"], table["slice"])]
+    table["lift"] = [p / floor[k] if k in floor.index and floor[k] else np.nan
+                     for p, k in zip(table["precision"],
+                                     zip(table["schedule"], table["slice"]))]
     return table
