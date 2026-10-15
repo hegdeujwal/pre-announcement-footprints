@@ -580,6 +580,13 @@ def ticker_detail() -> None:
                        "treated as unscheduled unless excluded. Opening a "
                        "filing shows what was announced in the company's own "
                        "words.")
+            when = dict(zip(f["accession_no"], f["acceptance_utc"]))
+            what = dict(zip(f["accession_no"], f["items"]))
+            pick = st.selectbox(
+                "Summarise a filing", list(f["accession_no"]),
+                key=f"summary-pick-{ticker}",
+                format_func=lambda a: f"{ui.utc(when[a], False)} · {what[a] or '—'}")
+            _llm_summary(pick, "history")
 
 
 def _what_followed(row: pd.Series, state: str, live: bool) -> None:
@@ -629,11 +636,52 @@ def _what_followed(row: pd.Series, state: str, live: bool) -> None:
     url = (info or {}).get("url")
     if url:
         st.markdown(f"[Open the full filing on sec.gov]({url})")
+    _llm_summary(acc, "followed")
     st.caption("Quoted word for word from the filing's own text, first "
                "sentences of each item; legal boilerplate is skipped. A filing "
                "following an alert does not show the alert was right: filings "
                "also follow at random hours, which the live monitor log "
                "measures against chance.")
+
+
+def _llm_summary(accession_no, key: str) -> None:
+    """A plain-language summary of one filing, made only when asked for.
+
+    Nothing is sent anywhere until the button is clicked: then the filing's
+    text goes to an LLM on Groq (src/live/summaries.py) and the answer is
+    saved under data/summaries, so the next view — by anyone, after a
+    restart — reads it from disk. This is the dashboard's one write, and it
+    never touches the database. The quotes stay the record: a summary is
+    labelled as machine-written and can be wrong.
+    """
+    from src.live import summaries
+
+    f = data.filing(accession_no)
+    if f is None:
+        return
+    saved = data.saved_summary(accession_no)
+    if saved is None:
+        if not st.button("Generate summary", key=f"summary-{key}-{accession_no}",
+                         help="Sends this filing's text to an AI model on Groq "
+                              "for a short plain-English summary. Made once, "
+                              "then saved."):
+            return
+        with st.spinner("Reading the filing and writing a summary…"):
+            try:
+                saved = summaries.generate(data.config(), accession_no, f["cik"],
+                                           f["primary_doc"], f["items"],
+                                           ticker=f["ticker"])
+            except summaries.SummaryError as exc:
+                st.error(f"No summary: {exc}.")
+                return
+        data.saved_summary.clear()
+    with st.container(border=True):
+        st.markdown("**Summary** &middot; " + data.item_labels(f["items"]))
+        st.markdown(saved["summary"])
+    st.caption(f"Written by an AI model ({saved['model']} on Groq) from the "
+               f"filing's own text on {ui.utc(saved['created_utc'], False)}. It "
+               f"can be wrong — the filing on sec.gov is the record. Shown "
+               f"after the filing was public; no detector reads it.")
 
 
 def _feature_table(row: pd.Series, price: pd.DataFrame) -> None:

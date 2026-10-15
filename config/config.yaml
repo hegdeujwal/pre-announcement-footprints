@@ -864,6 +864,33 @@ live:
       - "current beliefs and expectations"
       - "subject to (certain )?risks and uncertainties"
       - "risks, uncertainties"
+  # On-demand plain-language summary of an 8-K, written by an LLM on Groq
+  # when a user clicks "Generate summary" in the dashboard (src/live/summaries).
+  # DISPLAY ONLY, after the filing is public: no detector, feature, reward or
+  # label reads it (the item codes stay the labels). Each summary is saved
+  # once as data/summaries/<accession>.json and served from there afterwards.
+  summaries:
+    dir: "data/summaries"
+    api_url: "https://api.groq.com/openai/v1/chat/completions"
+    api_key_env: "GROQ_API_KEY"
+    # Checked 2026-10-15 against Groq's /models list (llama-3.3-70b-versatile
+    # is gone). gpt-oss thinks before it answers; low effort keeps that short,
+    # and the token cap covers the thinking as well as the summary.
+    model: "openai/gpt-oss-120b"
+    reasoning_effort: "low"
+    temperature: 0.2
+    max_output_tokens: 1500
+    timeout_s: 60
+    # Characters of filing text sent. ~4 characters a token, so ~4k tokens;
+    # with the output cap that stays inside the free tier's 8,000 tokens a
+    # minute for this model (a 24,000-character request was refused, HTTP 413).
+    max_input_chars: 16000
+    # The 8-K body often just points at a press release (Exhibit 99.x), which
+    # is where results and deal terms are. Up to this many are added after it.
+    exhibit_pattern: "ex-?99"
+    max_exhibits: 2
+    # Bump when the prompt changes, so an old summary can be told apart.
+    prompt_version: 1
   # How many of the most recent STORED sessions each run fetches again, and
   # lets the fresh copy overwrite. Yahoo's intraday volumes for a session can
   # be wrong when first served and corrected later: on 2026-10-07 the run

@@ -2,7 +2,9 @@
 
 The dashboard is a READER. It opens the database read-only and never calls a
 collector, so it cannot move the frozen snapshot, spend an API quota, or touch
-the sealed test split by accident.
+the sealed test split by accident. The one exception is in `screens.py`, not
+here: a filing summary is generated when a user clicks for it, and is written
+to its own file under data/summaries, never to the database.
 
 Timestamps come out of here as UTC epoch integers, exactly as they are stored.
 Formatting — and the timezone label that `UI-context.md` rule 7 requires on
@@ -672,6 +674,31 @@ def filing_url(cik, accession_no: str) -> str | None:
     base = config()["edgar"]["archives_base"]
     return (f"{base}/data/{int(cik)}/{accession_no.replace('-', '')}/"
             f"{accession_no}-index.htm")
+
+
+def filing(accession_no) -> dict | None:
+    """What is needed to fetch and summarise one filing, or None."""
+    if not isinstance(accession_no, str) or not accession_no or not db_present():
+        return None
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT cik, primary_doc, items, ticker, acceptance_utc FROM filings "
+            "WHERE accession_no = ?", (accession_no,)).fetchone()
+    if row is None:
+        return None
+    return dict(zip(("cik", "primary_doc", "items", "ticker", "acceptance_utc"), row))
+
+
+@st.cache_data(ttl=3600)
+def saved_summary(accession_no: str) -> dict | None:
+    """A filing's LLM summary if one was generated (src/live/summaries).
+
+    Cached for the session; the screen clears this cache right after it
+    generates one, so a new summary shows at once.
+    """
+    from src.live import summaries
+
+    return summaries.load(config(), accession_no)
 
 
 def filings(ticker: str, limit: int = 20) -> pd.DataFrame:

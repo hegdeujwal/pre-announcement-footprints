@@ -549,3 +549,19 @@ def test_what_followed_quotes_the_filing_and_links_it():
     quotes = dict(info["quotes"])
     assert "Roger Lynch" in quotes["5.02"]
     assert data.what_followed("no-such-filing") is None
+
+
+def test_a_filing_summary_is_made_only_on_click(monkeypatch):
+    """Nothing is sent to the LLM until the button is pressed, and a failure
+    (here: no key) is said on screen rather than raised."""
+    # Empty, not deleted: load_config's load_dotenv would refill a deleted
+    # one from .env and the click would reach Groq for real.
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    at = _run("Ticker detail")
+    buttons = [b for b in at.button if b.label == "Generate summary"]
+    if not buttons:
+        pytest.skip("no filing on record for the selected ticker")
+    assert "written by an ai model" not in _text(at)
+    buttons[-1].click().run()
+    assert not at.exception, at.exception
+    assert any("GROQ_API_KEY" in e.value for e in at.error)
