@@ -954,6 +954,10 @@ eval:
   # resolution to see miscalibration, few enough that each bin holds sample.
   calibration_bins: 10
   t0_variants: [filing, news_adjusted]   # report both, and the gap between them
+  # Impact split (src/eval/impact.py, added 2026-10-15): positives bucketed by
+  # their post-filing move into terciles. Edges come from TRAIN events only.
+  impact:
+    quantiles: [0.3333, 0.6667]
   # Within-stock AUC (src/eval/within_stock.py, added 2026-10-06): ranks each
   # stock's pre-filing bars only against that stock's own quiet bars, so stock
   # selection cannot earn credit. The interval bootstraps STOCKS, because one
@@ -996,6 +1000,15 @@ event_study:
   # the open alone would read as a footprint.
   control_shift_bars: 70
   out: "event-study-trainval.csv"
+
+# Candle-pattern and indicator study (src/eval/pattern_study.py, 2026-10-15).
+# Like the event study it scores no detector. pre_bars: one session (7 hourly
+# bars) before t0 — where the event study puts the footprint. The control is
+# event_study.control_shift_bars earlier. The bootstrap resamples EVENTS.
+pattern_study:
+  pre_bars: 7
+  bootstrap: 500
+  seed: 0
 
 # Display settings for the dashboard's statistical charts. Not model settings:
 # changing them moves no reported number, only what is drawn.
