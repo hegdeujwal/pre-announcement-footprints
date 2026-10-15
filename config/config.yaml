@@ -552,6 +552,15 @@ reward:
   # `suggest_r_wait` states the criterion and a test pins that config follows it.
   r_wait: -0.005
   r_missed: -0.5
+  # Template-shaped reward (2026-10-15, the guide's "template, then reward
+  # accordingly"). A correct FLAG earns an extra
+  #     r_template_bonus * clip(template score / template_bonus_scale, 0, 1)
+  # so a hit made while the run-up matches a learned pre-filing pattern pays
+  # more. 0.0 = off, which keeps every published policy reproducible; the
+  # experiment runs set it on a copy of this config. Scale 3.0: the template
+  # score is ~N(0,1) on quiet bars, so a 3-sigma match earns the full bonus.
+  r_template_bonus: 0.0
+  template_bonus_scale: 3.0
 
 # ------------------------------------------------------------
 # Baselines — all four must be genuinely tuned (context.md §4)
@@ -697,6 +706,19 @@ baselines:
     # clean interior maximum: 0.5 -> 0.0839, 1.0 -> 0.0850, 1.5 -> 0.0859,
     # 2.0 -> 0.0853, 3.0 -> 0.0817. Now bracketed on both sides.
     threshold_grid: [0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 8.0]
+  pattern_template:
+    # Matched filter against learned pre-filing shapes (src/baselines/template.py,
+    # added 2026-10-15). Fixed BEFORE any validation number was read:
+    # channel  - the project's central feature; the time-of-day variant is run
+    #            as its own named row, not chosen between after the fact
+    # length   - two sessions of hourly bars. The event study puts the
+    #            footprint in the last session; a second gives the "before"
+    #            for contrast
+    # min_group_events - an item-code template needs this many TRAIN events,
+    #            or its mean path is noise
+    channel: volume_z
+    length: 14
+    min_group_events: 150
   gradient_boosting:
     # Gets the WHOLE feature matrix, unlike volume_zscore and cusum which read
     # one column. That is the honest reading of "identical features": the same

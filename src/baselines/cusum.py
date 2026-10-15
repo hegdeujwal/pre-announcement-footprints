@@ -108,8 +108,13 @@ class CUSUM(Baseline):
     name = "cusum"
 
     def __init__(self, cfg: dict | None = None, drift: float | None = None,
-                 threshold: float | None = None) -> None:
+                 threshold: float | None = None, feature: str = FEATURE,
+                 name: str | None = None) -> None:
         super().__init__(cfg)
+        # See VolumeZScore: lets the log-volume variant reuse this class.
+        self.feature = feature
+        if name:
+            self.name = name
         c = self.cfg.get("baselines", {}).get("cusum", {})
         self.drift = c.get("drift", 0.5) if drift is None else drift
         self.threshold_h = (c.get("threshold", 5.0)
@@ -117,9 +122,9 @@ class CUSUM(Baseline):
         self.reset_after_alarm = bool(c.get("reset_after_alarm", True))
 
     def score(self, frame: pd.DataFrame) -> pd.Series:
-        if FEATURE not in frame.columns:
+        if self.feature not in frame.columns:
             raise ValueError(
-                f"{self.name}: frame has no {FEATURE!r} column — this baseline "
+                f"{self.name}: frame has no {self.feature!r} column — this baseline "
                 f"accumulates P4-07's feature and cannot run without it")
 
         # Sort internally rather than trusting the caller: the statistic is
@@ -129,7 +134,7 @@ class CUSUM(Baseline):
         out = pd.Series(np.nan, index=frame.index, dtype="float64")
         for _, block in chrono.groupby("ticker", sort=False):
             out.loc[block.index] = cusum_statistic(
-                block[FEATURE].to_numpy(dtype="float64"),
+                block[self.feature].to_numpy(dtype="float64"),
                 self.drift, self.threshold_h, self.reset_after_alarm)
         return out
 

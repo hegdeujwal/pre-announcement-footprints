@@ -90,8 +90,14 @@ class VolumeZScore(Baseline):
     name = "volume_zscore"
 
     def __init__(self, cfg: dict | None = None,
-                 min_wait_hours: float | None = None) -> None:
+                 min_wait_hours: float | None = None,
+                 feature: str = FEATURE, name: str | None = None) -> None:
         super().__init__(cfg)
+        # `feature`/`name` let the fat-tail variants (2026-10-15: log volume,
+        # time-of-day volume) run through this exact class rather than a copy.
+        self.feature = feature
+        if name:
+            self.name = name
         vz = self.cfg.get("baselines", {}).get("volume_zscore", {})
         self._min_wait = (vz.get("min_wait_hours", 0)
                           if min_wait_hours is None else min_wait_hours)
@@ -108,12 +114,12 @@ class VolumeZScore(Baseline):
         return common
 
     def score(self, frame: pd.DataFrame) -> pd.Series:
-        if FEATURE not in frame.columns:
+        if self.feature not in frame.columns:
             raise ValueError(
-                f"{self.name}: frame has no {FEATURE!r} column — this baseline "
-                f"scores P4-07's feature and cannot run without it"
+                f"{self.name}: frame has no {self.feature!r} column — this "
+                f"baseline scores that feature and cannot run without it"
             )
-        return frame[FEATURE]
+        return frame[self.feature]
 
 
 def tune(cfg: dict, frame: pd.DataFrame, conn=None,

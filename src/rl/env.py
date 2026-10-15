@@ -48,6 +48,10 @@ from src.baselines.gradient_boosting import FEATURES
 
 WAIT, FLAG = 0, 1
 
+#: Column holding the pattern-template score used by the optional
+#: template-shaped reward. Read for reward only, never observed.
+TEMPLATE_COL = "template_score"
+
 
 def clean_observations(rows: np.ndarray, obs_clip: float) -> np.ndarray:
     """NaN to 0.0, then clip. The one definition, shared by env and evaluation.
@@ -86,10 +90,11 @@ def observation_features(cfg: dict) -> tuple[str, ...]:
     instead of about the market.
     """
     from src.baselines.gradient_boosting import news_features
+    from src.pipeline.technical import technical_columns
 
     excluded = set(cfg.get("baselines", {}).get("gradient_boosting", {})
                    .get("exclude_features", ()))
-    available = FEATURES + news_features(cfg)
+    available = FEATURES + news_features(cfg) + technical_columns(cfg)
     return tuple(f for f in available if f not in excluded)
 
 
@@ -117,6 +122,10 @@ def episodes_from_frame(frame: pd.DataFrame,
             "is_positive": bool(block["t0_utc"].notna().iloc[0]),
             "ts_utc": block["ts_utc"].to_numpy(dtype="int64"),
             "obs": block.loc[:, list(features)].to_numpy(dtype="float64"),
+            # Reward shaping only (config `reward.r_template_bonus`); never
+            # part of the observation. None when the frame carries no score.
+            "template": (block[TEMPLATE_COL].to_numpy(dtype="float64")
+                         if TEMPLATE_COL in block.columns else None),
         })
     return episodes
 
@@ -195,6 +204,23 @@ class FootprintEnv(gym.Env):
                 self._step, len(self._episode["ts_utc"]) - 1)]),
         }
 
+    def _template_bonus(self) -> float:
+        """Extra pay for a correct flag made while the run-up matches a learned
+        pre-filing pattern. 0.0 unless `reward.r_template_bonus` is set."""
+        bonus = float(self.reward_table.get("r_template_bonus", 0.0) or 0.0)
+        if bonus == 0.0:
+            return 0.0
+        scores = self._episode.get("template")
+        if scores is None:
+            raise ValueError(
+                f"reward.r_template_bonus={bonus} but the training frame has "
+                f"no {TEMPLATE_COL!r} column — see rl.train.add_template_score")
+        s = scores[self._step]
+        if not np.isfinite(s):
+            return 0.0
+        scale = float(self.reward_table.get("template_bonus_scale", 3.0))
+        return bonus * float(np.clip(s / scale, 0.0, 1.0))
+
     # -- gym API ---------------------------------------------------------
     def reset(self, *, seed: int | None = None,
               options: dict | None = None) -> tuple[np.ndarray, dict]:
@@ -241,6 +267,7 @@ class FootprintEnv(gym.Env):
                 remaining = (length - 1 - self._step) / max(length - 1, 1)
                 reward = float(rt["r_correct_flag"]) + \
                     float(rt["r_early_bonus"]) * remaining
+                reward += self._template_bonus()
             else:
                 reward = float(rt["r_false_alarm"])
             info["outcome"] = "correct_flag" if positive else "false_alarm"

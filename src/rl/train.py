@@ -200,6 +200,24 @@ def build_training_frame(cfg: dict, conn) -> pd.DataFrame:
     return shared(cfg, conn)
 
 
+def add_template_score(cfg: dict, frame: pd.DataFrame, conn=None) -> pd.DataFrame:
+    """Attach the pattern-template score the template-shaped reward reads.
+
+    Fitted on this same TRAIN frame and scored window by window, so a stretch
+    never reaches into another sampled window of the same stock. A no-op when
+    `reward.r_template_bonus` is 0, which is the default.
+    """
+    if not float(cfg["reward"].get("r_template_bonus", 0.0) or 0.0):
+        return frame
+    from src.baselines.template import PatternTemplate
+    from src.rl.env import TEMPLATE_COL
+
+    template = PatternTemplate(cfg).fit(frame, conn=conn)
+    out = frame.copy()
+    out[TEMPLATE_COL] = template.score(frame, by="window_id").to_numpy()
+    return out
+
+
 def train(cfg: dict, frame: pd.DataFrame, conn=None,
           seed: int | None = None, timesteps: int | None = None,
           run_dir: Path | None = None, verbose: int = 0):
@@ -222,6 +240,7 @@ def train(cfg: dict, frame: pd.DataFrame, conn=None,
     if conn is not None:
         from src.pipeline import split
         split.assert_not_test(cfg, conn, frame["ts_utc"], "rl.train")
+    frame = add_template_score(cfg, frame, conn=conn)
 
     run_dir = Path(run_dir or Path(rl.get("runs_dir", "data/runs")) /
                    f"ppo-seed{seed}-{utc_now_ts()}")
@@ -288,9 +307,16 @@ def main() -> None:
     ap.add_argument("--timesteps", type=int, default=None)
     ap.add_argument("--run-dir", default=None)
     ap.add_argument("--verbose", type=int, default=1)
+    ap.add_argument("--template-bonus", type=float, default=None,
+                    help="override reward.r_template_bonus for this run "
+                         "(recorded in the manifest's reward table)")
     args = ap.parse_args()
 
     cfg = load_config()
+    if args.template_bonus is not None:
+        import copy
+        cfg = copy.deepcopy(cfg)
+        cfg["reward"]["r_template_bonus"] = float(args.template_bonus)
     conn = db.get_conn(cfg["paths"]["db"])
     print("building the training frame (3:1 sample, TRAIN split only)...")
     frame = build_training_frame(cfg, conn)

@@ -65,6 +65,9 @@ class PriorVolume(Baseline):
         self.alpha = float(knobs.get("alpha", 1.0))
         self.n_bins = int(knobs.get("n_bins", 20))
         self.seed = int(knobs.get("seed", 0))
+        #: The timing evidence. `volume_z` here; `hybrid.PriorTemplate` swaps
+        #: in a template score and reuses everything else unchanged.
+        self.feature = FEATURE
         if self.alpha <= 0:
             raise ValueError(f"{self.name}: alpha must be > 0, got {self.alpha}")
         self.log_prior: pd.Series | None = None
@@ -93,7 +96,7 @@ class PriorVolume(Baseline):
         counts = last[positive].groupby("ticker")["window_id"].nunique()
         self.log_prior = np.log(counts.astype("float64") + self.alpha)
 
-        z = last[FEATURE].to_numpy(dtype="float64")
+        z = last[self.feature].to_numpy(dtype="float64")
         finite = np.isfinite(z)
         quiet_z = z[finite & ~positive]
         # Quantile edges from the quiet bars: equal-mass bins where the bulk of
@@ -120,7 +123,7 @@ class PriorVolume(Baseline):
         # "this company did not file" is an answer, not a missing value.
         prior = (frame["ticker"].astype("object").map(self.log_prior)
                  .fillna(np.log(self.alpha)).to_numpy(dtype="float64"))
-        z = frame[FEATURE].to_numpy(dtype="float64")
+        z = frame[self.feature].to_numpy(dtype="float64")
         lr = np.zeros(len(frame))
         ok = np.isfinite(z)
         lr[ok] = self.log_lr[np.searchsorted(self.edges, z[ok], side="right")]
