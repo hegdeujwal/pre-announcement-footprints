@@ -25,6 +25,21 @@ results_export:
   - baseline-comparison-val-r2.csv
   - p8-with-news-val-r2.csv
   - event-study-trainval.csv
+  # The guide's review points (2026-10-15), validation only. Written by
+  # src.baselines.guide_review and src.eval.pattern_study; read by
+  # docs/build_guide_review.py.
+  - guide-review/comparison.csv
+  - guide-review/lead_time.csv
+  - guide-review/impact.csv
+  - guide-review/impact_edges.csv
+  - guide-review/within_stock.csv
+  - guide-review/distribution.csv
+  - guide-review/histogram.csv
+  - guide-review/templates.csv
+  - guide-review/pattern_rates.csv
+  - guide-review/indicator_shift.csv
+  - guide-review/pattern_paths.csv
+  - guide-review/run.log
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps

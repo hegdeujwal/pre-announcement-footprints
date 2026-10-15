@@ -1,0 +1,136 @@
+building the evaluation frame (technical columns on)...
+  evalset: 250/1500 tickers, 247 episodes + 52,192 bars
+  evalset: 500/1500 tickers, 461 episodes + 104,964 bars
+  evalset: 750/1500 tickers, 703 episodes + 157,116 bars
+  evalset: 1000/1500 tickers, 950 episodes + 209,773 bars
+  evalset: 1250/1500 tickers, 1,201 episodes + 261,642 bars
+  evalset: 1500/1500 tickers, 1,452 episodes + 313,242 bars
+evalset: 1,452 positive episodes + 313,242 quiet bars = 314,694 windows, base rate 0.4614%
+building the 3:1 train frame (technical columns on)...
+  always_quiet                        76s
+  random_noise[42]                    78s
+  random_noise[43]                    65s
+  random_noise[44]                    55s
+  random_noise[45]                    54s
+  random_noise[46]                    55s
+  volume_zscore                       53s
+  volume_logz                         53s
+  volume_tod_z                        54s
+  cusum                               54s
+  cusum[logz]                         52s
+  cusum[tod]                          55s
+  pattern_template                    55s
+  pattern_template[tod]               53s
+  gradient_boosting                   55s
+  gradient_boosting[technical]        54s
+  rl_policy[s42]                      55s
+  rl_policy[s43]                      53s
+  rl_policy[s44]                      53s
+  rl_policy[s45]                      55s
+  rl_policy[s46]                      53s
+  rl_template[s42]                    54s
+  rl_template[s43]                    55s
+  rl_template[s44]                    55s
+  rl_template[s45]                    54s
+  rl_template[s46]                    53s
+  ticker_prior                        54s
+  prior_volume                        51s
+  prior_template                      56s
+
+-- all --
+                    baseline                                family  precision   lift  recall  median_lead_trading_h
+                prior_volume                                hybrid     0.0338 7.3194  0.2087                32.5000
+                       cusum                        pure technical     0.0323 7.0054  0.1997                23.7914
+               volume_zscore                        pure technical     0.0320 6.9329  0.1977                23.7333
+              rl_policy[s43]             learned (RL, base reward)     0.0309 6.6913  0.1908                20.0000
+                 volume_logz                        pure technical     0.0308 6.6672  0.1901                20.0000
+                 cusum[logz]                        pure technical     0.0272 5.8942  0.1680                19.5000
+              prior_template                                hybrid     0.0200 4.3240  0.1233                26.5000
+                volume_tod_z                        pure technical     0.0185 4.0100  0.1143                19.5000
+                  cusum[tod]                        pure technical     0.0182 3.9375  0.1123                20.0000
+                ticker_prior                            stock only     0.0154 3.3336  0.0950                44.5000
+            pattern_template                        pure technical     0.0150 3.2611  0.0930                15.8667
+gradient_boosting[technical] learned (market + candles/indicators)     0.0095 2.0533  0.0585                32.5000
+            rl_template[s44]         learned (RL, template reward)     0.0089 1.9323  0.0551                41.5000
+       pattern_template[tod]                        pure technical     0.0080 1.7393  0.0496                15.5000
+           gradient_boosting             learned (market features)     0.0076 1.6426  0.0468                33.0000
+              rl_policy[s45]             learned (RL, base reward)     0.0072 1.5702  0.0448                43.2342
+            random_noise[46]                                  null     0.0051 1.1112  0.0317                29.3240
+            random_noise[43]                                  null     0.0050 1.0870  0.0310                29.5000
+                always_quiet                                  null     0.0046 1.0000  1.0000                44.5000
+            random_noise[42]                                  null     0.0042 0.9179  0.0262                30.5000
+              rl_policy[s44]             learned (RL, base reward)     0.0042 0.9170  0.0262                37.0000
+            random_noise[45]                                  null     0.0040 0.8696  0.0248                29.5000
+            random_noise[44]                                  null     0.0036 0.7730  0.0220                29.5000
+            rl_template[s43]         learned (RL, template reward)     0.0027 0.5798  0.0165                40.0000
+              rl_policy[s46]             learned (RL, base reward)     0.0013 0.2898  0.0083                34.8333
+            rl_template[s46]         learned (RL, template reward)     0.0007 0.1448  0.0041                35.0000
+              rl_policy[s42]             learned (RL, base reward)     0.0006 0.1208  0.0034                36.0000
+            rl_template[s42]         learned (RL, template reward)     0.0001 0.0256  0.0014                37.0000
+            rl_template[s45]         learned (RL, template reward)     0.0001 0.0191  0.0007                36.0000
+
+-- scheduled --
+                    baseline                                family  precision   lift  recall  median_lead_trading_h
+               volume_zscore                        pure technical     0.0267 9.8793  0.2807                18.5000
+                       cusum                        pure technical     0.0266 9.8422  0.2795                19.2700
+              rl_policy[s43]             learned (RL, base reward)     0.0253 9.3832  0.2665                17.1775
+                 volume_logz                        pure technical     0.0245 9.0582  0.2571                16.7667
+                prior_volume                                hybrid     0.0243 9.0044  0.2547                26.5000
+                 cusum[logz]                        pure technical     0.0220 8.1349  0.2311                 8.0000
+                volume_tod_z                        pure technical     0.0154 5.7149  0.1627                14.5000
+                  cusum[tod]                        pure technical     0.0149 5.5090  0.1568                12.9525
+              prior_template                                hybrid     0.0104 3.8352  0.1085                19.5000
+            pattern_template                        pure technical     0.0101 3.7342  0.1061                 7.0000
+gradient_boosting[technical] learned (market + candles/indicators)     0.0068 2.5250  0.0719                32.6465
+           gradient_boosting             learned (market features)     0.0059 2.1917  0.0625                33.0000
+       pattern_template[tod]                        pure technical     0.0044 1.6160  0.0460                 4.6635
+                ticker_prior                            stock only     0.0038 1.4201  0.0401                44.5000
+            random_noise[43]                                  null     0.0037 1.3642  0.0389                29.5000
+            random_noise[46]                                  null     0.0032 1.1995  0.0342                29.0379
+            rl_template[s44]         learned (RL, template reward)     0.0031 1.1625  0.0330                36.5933
+            random_noise[42]                                  null     0.0029 1.0748  0.0307                30.5000
+                always_quiet                                  null     0.0027 1.0000  1.0000                44.5000
+              rl_policy[s45]             learned (RL, base reward)     0.0020 0.7470  0.0212                43.5000
+            random_noise[45]                                  null     0.0018 0.6620  0.0189                29.5892
+            random_noise[44]                                  null     0.0018 0.6617  0.0189                29.5000
+              rl_policy[s44]             learned (RL, base reward)     0.0006 0.2070  0.0059                37.0000
+            rl_template[s43]         learned (RL, template reward)     0.0006 0.2069  0.0059                39.0000
+              rl_policy[s46]             learned (RL, base reward)     0.0003 0.1240  0.0035                37.0000
+              rl_policy[s42]             learned (RL, base reward)     0.0001 0.0413  0.0012                37.0000
+            rl_template[s46]         learned (RL, template reward)     0.0001 0.0413  0.0012                36.0000
+            rl_template[s45]         learned (RL, template reward)     0.0000 0.0000  0.0000                37.0000
+            rl_template[s42]         learned (RL, template reward)     0.0000 0.0000  0.0000                37.0000
+
+-- unscheduled --
+                    baseline                                family  precision   lift  recall  median_lead_trading_h
+                ticker_prior                            stock only     0.0116 6.0461  0.1722                44.5000
+                prior_volume                                hybrid     0.0099 5.1629  0.1440                33.0000
+              prior_template                                hybrid     0.0098 5.0908  0.1440                32.5000
+                 volume_logz                        pure technical     0.0066 3.4427  0.0960                26.0000
+                       cusum                        pure technical     0.0061 3.1528  0.0877                29.5925
+              rl_policy[s43]             learned (RL, base reward)     0.0058 3.0300  0.0844                26.5000
+            rl_template[s44]         learned (RL, template reward)     0.0058 3.0207  0.0861                43.5000
+               volume_zscore                        pure technical     0.0056 2.9152  0.0811                26.5000
+                 cusum[logz]                        pure technical     0.0055 2.8420  0.0795                26.5000
+              rl_policy[s45]             learned (RL, base reward)     0.0052 2.7275  0.0778                42.5000
+            pattern_template                        pure technical     0.0051 2.6326  0.0745                26.0000
+       pattern_template[tod]                        pure technical     0.0037 1.9195  0.0546                21.0000
+              rl_policy[s44]             learned (RL, base reward)     0.0037 1.9103  0.0546                37.0000
+                  cusum[tod]                        pure technical     0.0034 1.7636  0.0497                26.0000
+                volume_tod_z                        pure technical     0.0032 1.6469  0.0464                25.0000
+gradient_boosting[technical] learned (market + candles/indicators)     0.0027 1.3995  0.0397                32.5000
+            random_noise[45]                                  null     0.0022 1.1604  0.0331                29.5000
+            rl_template[s43]         learned (RL, template reward)     0.0021 1.1010  0.0315                41.5000
+                always_quiet                                  null     0.0019 1.0000  1.0000                44.5000
+            random_noise[46]                                  null     0.0019 0.9877  0.0281                29.3240
+            random_noise[44]                                  null     0.0018 0.9283  0.0265                29.5000
+           gradient_boosting             learned (market features)     0.0017 0.8739  0.0248                34.0000
+            random_noise[43]                                  null     0.0013 0.6975  0.0199                30.5000
+            random_noise[42]                                  null     0.0013 0.6970  0.0199                30.5000
+              rl_policy[s46]             learned (RL, base reward)     0.0010 0.5214  0.0149                30.5000
+            rl_template[s46]         learned (RL, template reward)     0.0006 0.2894  0.0083                31.5000
+              rl_policy[s42]             learned (RL, base reward)     0.0004 0.2316  0.0066                35.0000
+            rl_template[s42]         learned (RL, template reward)     0.0001 0.0613  0.0033                35.0000
+            rl_template[s45]         learned (RL, template reward)     0.0001 0.0457  0.0017                31.5000
+
+wrote /home/ujwal/Pros/pre-announcement-footprints/data/processed/guide-review  (1966s)
