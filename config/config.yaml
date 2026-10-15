@@ -460,6 +460,31 @@ features:
   # ablation measure the gap between two whitelists, not the news channel.
   news_max_tier: 2
 
+  # Chart-reading features from the guide's review list (2026-10-15), built by
+  # `src/pipeline/technical.py`. OFF by default for the same reason as the news
+  # channel: switching it on is an experiment, and every published number must
+  # stay reproducible with the switch in its default position. Turning it on
+  # also moves the matrix to `features-with-technical.parquet`, so the two arms
+  # can never overwrite each other. Every value below is a textbook default,
+  # set before any validation number was read — none is tuned.
+  technical:
+    enabled: false
+    # Same-time-of-day volume baseline. 60 sessions is ~3 months, close to the
+    # ~69 sessions `volume_zscore_window_h` spans, so the two z-scores look back
+    # over the same history; 20 sessions minimum mirrors min_baseline_bars.
+    tod_window_sessions: 60
+    tod_min_sessions: 20
+    range_window: 120              # bars; same span as volatility_window_h
+    doji_body_max: 0.1             # |body| <= 10% of the range
+    hammer_wick_ratio: 2.0         # long wick >= 2x the body (Nison's rule)
+    hammer_other_wick_max: 0.1     # and the opposite wick nearly absent
+    marubozu_body_min: 0.9         # body fills >= 90% of the range
+    rsi_window: 14                 # Wilder's original
+    bollinger_window: 20           # Bollinger's original
+    bollinger_k: 2.0
+    obv_window: 24                 # ~3.5 sessions of hourly bars
+    vwap_window: 7                 # one session of hourly bars
+
 # ------------------------------------------------------------
 # Sampling (review "Day 9" — fix this now, report two ratios)
 # ------------------------------------------------------------

@@ -347,10 +347,12 @@ def _ticker_frame(conn, ticker: str, interval: str) -> pd.DataFrame:
     than a raw `KeyError` taking down the whole assembly.
     """
     rows = conn.execute(
-        "SELECT ts_utc, close, volume FROM bars WHERE ticker = ? AND "
-        "interval = ? ORDER BY ts_utc", (ticker, interval)).fetchall()
+        "SELECT ts_utc, open, high, low, close, volume FROM bars WHERE "
+        "ticker = ? AND interval = ? ORDER BY ts_utc",
+        (ticker, interval)).fetchall()
     if not rows:
-        return pd.DataFrame(columns=["close", "volume"]).rename_axis("ts_utc")
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"]
+                            ).rename_axis("ts_utc")
     return pd.DataFrame([dict(r) for r in rows]).set_index("ts_utc")
 
 
@@ -468,6 +470,11 @@ def ticker_features(frame: pd.DataFrame, benchmark: pd.DataFrame,
     # Default false also keeps every Phase 5/6 number reproducible unchanged.
     if cfg["features"].get("include_news_coverage", False):
         parts.append(news_coverage(frame, article_times, publishers, cfg))
+    # Same switch pattern, same reason: the chart-reading group is an
+    # experiment and must leave the default matrix untouched.
+    if cfg["features"].get("technical", {}).get("enabled", False):
+        from src.pipeline.technical import technical_features
+        parts.append(technical_features(frame, cfg))
     return pd.concat(parts, axis=1)
 
 
@@ -676,10 +683,12 @@ def matrix_path(cfg: dict):
     """
     from pathlib import Path
 
-    name = ("features-with-news.parquet"
-            if cfg["features"].get("include_news_coverage", False)
-            else "features.parquet")
-    return Path(cfg["paths"]["processed"]) / name
+    name = "features"
+    if cfg["features"].get("include_news_coverage", False):
+        name += "-with-news"
+    if cfg["features"].get("technical", {}).get("enabled", False):
+        name += "-with-technical"
+    return Path(cfg["paths"]["processed"]) / f"{name}.parquet"
 
 
 def write_matrix(cfg: dict, conn) -> pd.DataFrame:

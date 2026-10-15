@@ -122,8 +122,11 @@ class GradientBoosting(Baseline):
         nearly doubles validation precision (0.0257 -> 0.0493). Both figures
         are reported; see work-log entry 54.
         """
+        from src.pipeline.technical import technical_columns
+
         excluded = set(self.params.get("exclude_features", ()))
-        available = FEATURES + news_features(self.cfg)
+        available = (FEATURES + news_features(self.cfg)
+                     + technical_columns(self.cfg))
         return tuple(f for f in available if f not in excluded)
 
     def _check_columns(self, frame: pd.DataFrame) -> None:
