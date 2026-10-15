@@ -557,6 +557,13 @@ def test_a_filing_summary_is_made_only_on_click(monkeypatch):
     # Empty, not deleted: load_config's load_dotenv would refill a deleted
     # one from .env and the click would reach Groq for real.
     monkeypatch.setenv("GROQ_API_KEY", "")
+    # Ignore summaries already saved on this machine, or the button is
+    # replaced by the saved text and there is nothing to click.
+    import streamlit as st
+
+    from src.live import summaries
+    monkeypatch.setattr(summaries, "load", lambda cfg, acc: None)
+    st.cache_data.clear()
     at = _run("Ticker detail")
     buttons = [b for b in at.button if b.label == "Generate summary"]
     if not buttons:
