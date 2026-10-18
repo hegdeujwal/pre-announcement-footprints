@@ -81,6 +81,20 @@ study_window:
   start: "2025-09-01"
   end: "2026-08-01"
 
+# The fresh holdout (src/pipeline/holdout.py, added 2026-10-18 on the user's
+# decision). The sealed test set was opened once, 2026-09-10, and is spent;
+# models built after that date are given their final number here instead.
+# start: the study window's end, so nothing overlaps data anything was tuned
+#        on. end: exclusive — 2026-10-17 keeps Friday 2026-10-16, the last
+#        session collected; filings in its final day lack a post-t0 bar and
+#        are excluded by materiality, as in the study.
+# Its events are written to `out` (under paths.processed), never to the
+# study's events table, which t0.write_events prunes to study_window.
+holdout:
+  start: "2026-08-01"
+  end: "2026-10-17"
+  out: "holdout/events.parquet"
+
 # ------------------------------------------------------------
 # Universe (review §7.1, §7.5)
 # ------------------------------------------------------------

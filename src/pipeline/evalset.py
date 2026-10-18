@@ -68,7 +68,8 @@ T0_COLUMNS = {"news_adjusted": "t0_utc", "filing": "t0_filing_utc"}
 
 
 def _positive_windows(conn, cfg: dict, ticker: str, lo: int, hi: int,
-                      t0_column: str = "t0_utc") -> list[dict]:
+                      t0_column: str = "t0_utc",
+                      events: "pd.DataFrame | None" = None) -> list[dict]:
     """Usable events for one ticker whose t0 falls in [lo, hi).
 
     `t0_column` selects the variant. The chosen column is aliased to `t0_utc`
@@ -79,6 +80,15 @@ def _positive_windows(conn, cfg: dict, ticker: str, lo: int, hi: int,
     if t0_column not in set(T0_COLUMNS.values()):
         raise SystemExit(f"unknown t0 column {t0_column!r}; expected one of "
                          f"{sorted(set(T0_COLUMNS.values()))}")
+    if events is not None:
+        # The holdout (pipeline.holdout) arrives as a frame, never through the
+        # study's events table — the same filter, applied to it instead.
+        e = events[(events["usable"] == 1) & (events["ticker"] == ticker)
+                   & (events[t0_column] >= lo) & (events[t0_column] < hi)]
+        e = e.sort_values(t0_column)
+        return [{"event_id": r.event_id, "items": r.items,
+                 "t0_utc": int(getattr(r, t0_column)),
+                 "is_scheduled": r.is_scheduled} for r in e.itertuples()]
     rows = conn.execute(
         f"SELECT event_id, items, {t0_column} AS t0_utc, is_scheduled FROM events "
         f"WHERE usable = 1 AND ticker = ? AND {t0_column} >= ? AND {t0_column} < ? "
@@ -89,7 +99,8 @@ def _positive_windows(conn, cfg: dict, ticker: str, lo: int, hi: int,
 def build_eval_frame(cfg: dict, conn, lo: int, hi: int,
                      tickers: list[str] | None = None,
                      progress_every: int = 250,
-                     t0_variant: str = "news_adjusted") -> pd.DataFrame:
+                     t0_variant: str = "news_adjusted",
+                     events: pd.DataFrame | None = None) -> pd.DataFrame:
     """Every decision point in [lo, hi), positives as episodes.
 
     Returns a frame in the feature matrix's shape, ready to hand to a
@@ -137,7 +148,8 @@ def build_eval_frame(cfg: dict, conn, lo: int, hi: int,
         # negative pool. A bar cannot be both its own decision point and part
         # of an episode — it would be counted twice by every metric.
         claimed = np.zeros(len(stamps), dtype=bool)
-        for event in _positive_windows(conn, cfg, ticker, lo, hi, t0_column):
+        for event in _positive_windows(conn, cfg, ticker, lo, hi, t0_column,
+                                       events=events):
             end = np.searchsorted(stamps, event["t0_utc"], side="left")
             start = max(end - horizon, 0)
             if end <= start:
