@@ -6,9 +6,11 @@ every table is written twice: all hours, and closing-bar windows only
 is the one to read; the all-hours table is kept so the clock's share stays
 visible. The clock-only null sits in both.
 
-Rows: always-quiet, random noise, clock-only, volume z-score, CUSUM, and for
-every seed FootprintNet pre-trained, FootprintNet from scratch, and the Stage 1
-surprise score.
+Rows: always-quiet, random noise, clock-only, volume z-score, CUSUM, the
+stock-selection control (`ticker_prior`: which stock, never which hour — a
+detector that does not beat it on budgeted lift is mostly picking filing-prone
+companies), and for every seed FootprintNet pre-trained, FootprintNet from
+scratch, and the Stage 1 surprise score.
 
 The holdout is opened ONCE
 --------------------------
@@ -34,12 +36,14 @@ import pandas as pd
 
 from src.baselines.always_quiet import AlwaysQuiet
 from src.baselines.clock_only import ClockOnly
-from src.baselines.compare import comparison_table, conform, noise_seeds
+from src.baselines.compare import (comparison_table, conform, noise_seeds,
+                                   train_positives)
 from src.baselines.cusum import CUSUM
 from src.baselines.footprint_net import FootprintDetector, knobs
 from src.baselines.guide_review import (SLICES, configs, lead_rows,
                                         same_hour_rows, with_lift)
 from src.baselines.random_noise import RandomNoise
+from src.baselines.ticker_prior import TickerPrior
 from src.baselines.volume_zscore import VolumeZScore
 from src.eval.within_stock import within_stock_table
 from src.pipeline import holdout as H
@@ -63,13 +67,14 @@ def footprint_rows(cfg: dict, runs_dir: Path, seeds: list[int]):
                 print(f"  (missing {path}, row skipped)")
 
 
-def detectors(cfg_off: dict, cfg_on: dict, seeds: list[int]):
+def detectors(cfg_off: dict, cfg_on: dict, seeds: list[int], conn=None):
     yield "null", AlwaysQuiet(cfg_off)
     for s in noise_seeds(cfg_off):
         yield "null", RandomNoise(cfg_off, seed=s)
     yield "null", ClockOnly(cfg_off)
     yield "pure technical", VolumeZScore(cfg_off)
     yield "pure technical", CUSUM(cfg_off)
+    yield "stock only", TickerPrior(cfg_off).fit(train_positives(cfg_off), conn=conn)
     yield from footprint_rows(cfg_on, Path(knobs(cfg_on)["runs_dir"]), seeds)
 
 
@@ -105,7 +110,7 @@ def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
     frame = conform(frame)
 
     comp, comp_same, within, within_same, lead = [], [], [], [], []
-    for family, model in detectors(cfg_off, cfg_on, seeds):
+    for family, model in detectors(cfg_off, cfg_on, seeds, conn=conn):
         started = time.time()
         pred = model.predict(frame, threshold=float("inf"), conn=conn,
                              context=f"footprint_review/{model.name}")
