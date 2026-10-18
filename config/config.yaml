@@ -755,6 +755,60 @@ baselines:
     channel: volume_z
     length: 14
     min_group_events: 150
+  footprint_net:
+    # FootprintNet (src/baselines/footprint_net.py + footprint_train.py, added
+    # 2026-10-18 on the user's decision): a small GRU pre-trained to forecast
+    # the next hour on every TRAIN-split bar, then fine-tuned to detect a
+    # filing. Every value below was fixed BEFORE any validation number:
+    # channels - per-bar inputs, all backward-looking features already in the
+    #            frame. days_since_last_8k / _earnings / trading_hours_to_close
+    #            stay out (gradient_boosting.exclude_features: they encode how
+    #            windows were cut). Two clock inputs are added in code — bars to
+    #            the session close and weekday — because Stage 1 needs the day's
+    #            rhythm to forecast volume; Stage 2 cannot profit from them
+    #            because its negatives are matched on bar-of-session
+    # length   - one decision window, decision.horizon_hours
+    # clip     - inputs are z-scores and returns: centred, unbounded; clipped
+    #            like rl.obs_clip so one bad bar cannot dominate a batch
+    # hidden   - 64: the labelled set is ~4,700 filings, so the smallest
+    #            network that can hold a 48-bar summary, not a bigger one
+    # seeds    - five, every one reported (the RL agent swung 9.16x -> 0.00x
+    #            on its seed)
+    # inner_val_fraction - the LAST share of the TRAIN period, held out for
+    #            early stopping only. Validation is never used to stop or tune
+    # pretrain - next-bar volume_logz and range_z. warmup: the first steps of a
+    #            window get no loss, the GRU has seen too little to forecast.
+    #            Sized for CPU (no CUDA here): 100k windows x 40 targets/epoch
+    # finetune - positives: every TRAIN filing's final bar before t0, the bar
+    #            the metric scores. Negatives: quiet bars, 20 per positive,
+    #            drawn to match the positives' bar-of-session mix exactly, so
+    #            the clock is worth nothing to the loss
+    # runs_dir - under data/, gitignored, like the RL runs
+    channels: [volume_logz, volume_tod_z, ret_rel_1h, range_z, candle_body,
+               gap_open, volatility]
+    length: 48
+    clip: 10.0
+    hidden: 64
+    dropout: 0.2
+    seeds: [42, 43, 44, 45, 46]
+    inner_val_fraction: 0.15
+    pretrain:
+      targets: [volume_logz, range_z]
+      warmup: 8
+      windows_per_epoch: 100000
+      epochs: 8
+      batch: 256
+      lr: 1.0e-3
+      patience: 2
+    finetune:
+      negatives_per_positive: 20
+      epochs: 40
+      batch: 256
+      lr: 5.0e-4
+      weight_decay: 1.0e-4
+      patience: 6
+    threads: 8
+    runs_dir: "data/runs/footprint-net"
   analog:
     # Analog memory (src/baselines/analog.py, added 2026-10-18 on the mentor's
     # "remember each pre-filing pattern, find it again in other companies").
