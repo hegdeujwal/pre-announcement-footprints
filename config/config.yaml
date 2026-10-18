@@ -734,6 +734,36 @@ baselines:
     channel: volume_z
     length: 14
     min_group_events: 150
+  analog:
+    # Analog memory (src/baselines/analog.py, added 2026-10-18 on the mentor's
+    # "remember each pre-filing pattern, find it again in other companies").
+    # Every value fixed BEFORE any validation number was read:
+    # length   - 14, the template's two sessions, so the two rows compare
+    # k        - neighbours per vote. 25 of ~19k stored cases: enough that one
+    #            odd case cannot decide a score, few enough to stay local
+    # eps      - distance floor in the 1/d vote weight; guards an exact match
+    # chunk_rows - query rows per distance block. Memory only, moves no number
+    # top_n    - how many item codes a guess names (hit@1 and hit@top_n)
+    # non_substantive_items - 9.01 is "financial statements and exhibits",
+    #            attached to most 8-Ks and never the reason for one
+    # variants - one named row each, all reported; none is picked afterwards.
+    #            volume = the project's central feature; tod = the same with
+    #            time of day removed (the closing bar is always busy); price =
+    #            the mentor's candle/price-movement idea on its own; price+volume
+    #            both; "other stocks" = the same, never matching a stock to its
+    #            own past filings — the strict form of the claim
+    length: 14
+    k: 25
+    eps: 1.0e-6
+    chunk_rows: 4096
+    top_n: 3
+    non_substantive_items: ["9.01"]
+    variants:
+      - {name: "analog[volume]", channels: [volume_z], exclude_same_ticker: false}
+      - {name: "analog[tod]", channels: [volume_tod_z], exclude_same_ticker: false}
+      - {name: "analog[price]", channels: [ret_rel_1h, range_z, candle_body], exclude_same_ticker: false}
+      - {name: "analog[price+volume]", channels: [volume_tod_z, ret_rel_1h, range_z], exclude_same_ticker: false}
+      - {name: "analog[price+volume, other stocks]", channels: [volume_tod_z, ret_rel_1h, range_z], exclude_same_ticker: true}
   gradient_boosting:
     # Gets the WHOLE feature matrix, unlike volume_zscore and cusum which read
     # one column. That is the honest reading of "identical features": the same
@@ -1008,6 +1038,15 @@ eval:
     bootstrap: 1000
     seed: 0
     ci: 0.95
+  # Item guesses from the analog memory (src/eval/analog_items.py, added
+  # 2026-10-18): does the nearest past case name the right 8-K item, against
+  # bar-blind guesses? The bootstrap resamples EVENTS. `seed` also drives the
+  # random-guess reference. `examples`: matched cases written out for reading.
+  analog_items:
+    bootstrap: 1000
+    seed: 0
+    ci: 0.95
+    examples: 25
   # Live alerts against chance (src/eval/live_vs_chance.py, added 2026-10-06).
   # random_hours: draws per alert for the same-stock-random-hour control. The
   # bootstrap resamples DAYS, since one stock often alerts for hours running.
