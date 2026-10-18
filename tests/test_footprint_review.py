@@ -27,3 +27,14 @@ def test_reopening_keeps_the_whole_history(tmp_path):
     rec = json.loads((tmp_path / OPENED).read_text())
     assert [h["reason"] for h in rec["history"]] == ["first", "second, because X"]
     assert rec["reason"] == "second, because X"
+
+
+def test_windows_reaching_before_the_holdout_are_dropped_whole():
+    import pandas as pd
+
+    from src.baselines.footprint_review import inside_holdout
+    f = pd.DataFrame({"window_id": ["E1", "E1", "E2", "E2", "bar:x"],
+                      "ts_utc": [90, 110, 120, 130, 140],
+                      "t0_utc": [200, 200, 300, 300, None]})
+    out = inside_holdout(f, lo=100)
+    assert out["window_id"].tolist() == ["E2", "E2", "bar:x"]

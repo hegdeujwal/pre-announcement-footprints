@@ -78,6 +78,23 @@ def detectors(cfg_off: dict, cfg_on: dict, seeds: list[int], conn=None):
     yield from footprint_rows(cfg_on, Path(knobs(cfg_on)["runs_dir"]), seeds)
 
 
+def inside_holdout(frame: pd.DataFrame, lo: int) -> pd.DataFrame:
+    """Drop every window holding a bar before the holdout starts.
+
+    An early-August filing's look-back reaches into late July, which is the
+    study's sealed test period (`split.assert_not_test` refuses it). Dropping
+    the window, not trimming it, keeps every scored window the same shape as
+    on validation.
+    """
+    early = frame.loc[frame["ts_utc"].astype("int64") < lo, "window_id"].unique()
+    if len(early):
+        gone = frame[frame["window_id"].isin(early)]
+        n_pos = gone.loc[gone["t0_utc"].notna(), "window_id"].nunique()
+        print(f"  holdout: dropped {len(early):,} window(s) reaching before the "
+              f"holdout start, {n_pos:,} of them positive")
+    return frame[~frame["window_id"].isin(early)].reset_index(drop=True)
+
+
 def open_holdout(out_dir: Path, reason: str | None, reopen: bool) -> None:
     marker = out_dir / OPENED
     if not reason:
@@ -103,6 +120,7 @@ def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
         events = pd.read_parquet(H.out_path(cfg))
         frame = build_eval_frame(cfg_on, conn, lo, hi, tickers=tickers,
                                  t0_variant=variant, events=events)
+        frame = inside_holdout(frame, lo)
     else:
         lo, hi = split_bounds(cfg_on, split, conn=conn)
         frame = build_eval_frame(cfg_on, conn, lo, hi, tickers=tickers,
