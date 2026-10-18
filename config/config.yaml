@@ -601,6 +601,13 @@ baselines:
     # genuinely early. volume_zscore.min_wait_hours overrides this per baseline
     # where P5-03's tuning calls for it.
     min_wait_hours: 0
+  clock_only:
+    # The clock null (src/baselines/clock_only.py, added 2026-10-18): ranks
+    # every hour by -seconds to the session close, nothing else. 84% of
+    # positive windows are scored on the closing bar, so this row prices the
+    # time of day. Any detector that does not clearly beat it is, on this
+    # frame, reading the clock. `seed` only drives the tie-breaking jitter.
+    seed: 0
   random_noise:
     # The null. A scorer that reads nothing and draws a uniform score per hour.
     #
@@ -1038,6 +1045,15 @@ eval:
     bootstrap: 1000
     seed: 0
     ci: 0.95
+  # Same-hour view (src/eval/same_hour.py, added 2026-10-18): every
+  # comparison is also reported on the windows whose SCORED bar is the
+  # session's last bar, where time of day carries no information.
+  # max_seconds_to_close: a bar is the last one when the close is at most one
+  # hourly bar after its start — the 15:30 half bar on a full day, the 12:30
+  # bar on a 13:00 half day. One bar, not two: the 14:30 bar would let the
+  # clock back in.
+  same_hour:
+    max_seconds_to_close: 3600
   # Item guesses from the analog memory (src/eval/analog_items.py, added
   # 2026-10-18): does the nearest past case name the right 8-K item, against
   # bar-blind guesses? The bootstrap resamples EVENTS. `seed` also drives the

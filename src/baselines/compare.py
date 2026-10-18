@@ -34,6 +34,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.baselines.always_quiet import AlwaysQuiet
+from src.baselines.clock_only import ClockOnly
 from src.baselines.prior_volume import PriorVolume
 from src.baselines.random_noise import RandomNoise
 from src.baselines.ticker_prior import TickerPrior
@@ -42,12 +43,14 @@ from src.baselines.gradient_boosting import GradientBoosting
 from src.baselines.volume_zscore import VolumeZScore
 from src.eval.report import evaluate
 from src.eval.metrics import precision_at_alert_budget
+from src.eval.same_hour import same_hour_view
 from src.pipeline.evalset import T0_COLUMNS, build_eval_frame, split_bounds
 from src.utils.config import load_config
 
 #: The columns worth putting in front of a reader, in reading order.
 REPORT_COLUMNS = [
-    "baseline", "slice", "t0_variant", "n_windows", "n_positive", "base_rate",
+    "baseline", "slice", "t0_variant", "view", "n_windows", "n_positive",
+    "base_rate",
     "precision", "max_precision", "lift", "recall", "n_alerts",
     "median_lead_trading_h", "degenerate",
     # Plan §6: the action distribution beside the score, every time. These two
@@ -191,6 +194,10 @@ def run_baselines(cfg: dict, conn, frame: pd.DataFrame,
     # this baseline reads no features.
     models: list = [AlwaysQuiet(cfg)]
     models += [RandomNoise(cfg, seed=s) for s in noise_seeds(cfg)]
+    # The clock null: time of day and nothing else. Most positives are scored
+    # on the closing bar, so this row prices the clock — see `clock_only.py`
+    # and the closing-bar view that `main` reports beside every table.
+    models.append(ClockOnly(cfg))
     models += [VolumeZScore(cfg), CUSUM(cfg)]
     # The stock-selection control: which stock, never which hour. A timing
     # detector that does not clearly beat this row is mostly picking
@@ -249,7 +256,8 @@ _NO_OWN_RULE = {"flag_rate": float("nan"), "pct_windows_alerted": float("nan")}
 
 def comparison_table(cfg: dict, predictions: dict[str, pd.DataFrame],
                      variant: str,
-                     models: dict[str, object] | None = None) -> pd.DataFrame:
+                     models: dict[str, object] | None = None,
+                     view: str = "all_hours") -> pd.DataFrame:
     """One row per (baseline x slice), sharing one operating point per baseline.
 
     Slices come from `config.eval.split_by` — every number split scheduled vs
@@ -259,6 +267,9 @@ def comparison_table(cfg: dict, predictions: dict[str, pd.DataFrame],
     every row also carries what that detector would do on its OWN rule rather
     than at the alert budget, which is plan §6's degeneracy check and the one
     thing the budgeted columns structurally cannot answer.
+
+    `view` labels which population `predictions` covers: "all_hours", or
+    "closing_bar" for frames already passed through `eval.same_hour`.
     """
     from src.eval.report import slice_frames
 
@@ -276,7 +287,7 @@ def comparison_table(cfg: dict, predictions: dict[str, pd.DataFrame],
             own = (model.own_action_distribution(sliced) if model is not None
                    else _NO_OWN_RULE)
             row = {"baseline": name, "slice": slice_name,
-                   "t0_variant": variant,
+                   "t0_variant": variant, "view": view,
                    **evaluate(sliced, threshold=threshold),
                    "policy_flag_rate": own["flag_rate"],
                    "policy_pct_windows_alerted": own["pct_windows_alerted"]}
@@ -354,7 +365,7 @@ def main() -> None:
     variants = [args.variant] if args.variant else list(T0_COLUMNS)
 
     started = time.time()
-    tables, gb, pv = [], None, None
+    tables, same_tables, gb, pv = [], [], None, None
     for variant in variants:
         print(f"\n=== t0 variant: {variant} ({args.split}) ===")
         frame = conform(build_eval_frame(cfg, conn, lo, hi, t0_variant=variant))
@@ -372,6 +383,20 @@ def main() -> None:
             sampling_ratio=args.sampling_ratio)
         table = comparison_table(cfg, predictions, variant, models=models)
         tables.append(table)
+        # The same detectors where the clock is worthless: closing-bar windows
+        # only. Printed and written beside the all-hours table, never instead
+        # of it — see `eval.same_hour` for what the view costs.
+        try:
+            same = comparison_table(
+                cfg, {k: same_hour_view(v, cfg) for k, v in predictions.items()},
+                variant, models=models, view="closing_bar")
+            same_tables.append(same)
+        except ValueError as exc:
+            # Only a frame with no closing-bar positive can land here — never
+            # the real evaluation set. Said loudly, and the all-hours table
+            # still stands on its own.
+            same = None
+            print(f"\n!! closing-bar view unavailable for {variant}: {exc}")
         # All three slices, not just the pooled one. AGENTS.md rule 7: every
         # headline number is split scheduled vs unscheduled. This print is what
         # the run log records and therefore what a report would be written
@@ -383,11 +408,22 @@ def main() -> None:
                 print("  (no rows in this slice)")
                 continue
             print(render(table, slice_name))
+            if same is not None:
+                print(f"\n-- slice: {slice_name}, closing-bar windows only --")
+                print(render(same, slice_name))
 
     full = pd.concat(tables, ignore_index=True)
     if args.out:
         full.to_csv(args.out, index=False)
+        # A sibling file, not extra rows: readers of `--out` pick rows by
+        # baseline and slice, and a second view in the same file would hand
+        # them two rows for every key.
+        out = Path(args.out)
+        same_path = out.with_name(f"{out.stem}-same-hour{out.suffix}")
         print(f"\nwrote {args.out}")
+        if same_tables:
+            pd.concat(same_tables, ignore_index=True).to_csv(same_path, index=False)
+            print(f"wrote {same_path}")
 
     if len(variants) > 1:
         # Split here too, and for the same reason: the news correction is the

@@ -41,6 +41,7 @@ import pandas as pd
 from scipy import stats
 
 from src.baselines.always_quiet import AlwaysQuiet
+from src.baselines.clock_only import ClockOnly
 from src.baselines.compare import (build_training_frame, comparison_table,
                                    conform, noise_seeds, train_positives)
 from src.baselines.cusum import CUSUM
@@ -54,6 +55,7 @@ from src.baselines.volume_zscore import VolumeZScore
 from src.eval import impact as I
 from src.eval.contract import actions_from_scores
 from src.eval.metrics import detection_delays, precision_at_alert_budget
+from src.eval.same_hour import same_hour_view
 from src.eval.within_stock import within_stock_table
 from src.pipeline.evalset import build_eval_frame, split_bounds
 from src.utils.config import load_config
@@ -103,6 +105,22 @@ def histogram_table(frame: pd.DataFrame, lo: float = -4, hi: float = 10,
     return pd.DataFrame(rows)
 
 
+def with_lift(comp: pd.DataFrame) -> pd.DataFrame:
+    """Lift per slice against the always-quiet row of the SAME table."""
+    floor = comp[comp["baseline"] == "always_quiet"].set_index("slice")["precision"]
+    return comp.assign(lift=comp["precision"] / comp["slice"].map(floor))
+
+
+def same_hour_rows(cfg: dict, cfg_off: dict, model, pred: pd.DataFrame,
+                   variant: str, family: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(comparison rows, within-stock rows) on closing-bar windows only."""
+    same = same_hour_view(pred, cfg)
+    comp = comparison_table(cfg_off, {model.name: same}, variant,
+                            models={model.name: model}, view="closing_bar")
+    within = within_stock_table(cfg, {model.name: same}, variant)
+    return comp.assign(family=family), within.assign(family=family)
+
+
 def lead_rows(name: str, pred: pd.DataFrame) -> list[dict]:
     """Mean and median lead per slice, at the budget's operating point."""
     threshold = precision_at_alert_budget(pred).threshold
@@ -131,6 +149,7 @@ def detectors(cfg_off: dict, cfg_on: dict, conn, train: pd.DataFrame,
     yield "null", AlwaysQuiet(cfg_off)
     for s in noise_seeds(cfg_off):
         yield "null", RandomNoise(cfg_off, seed=s)
+    yield "null", ClockOnly(cfg_off)
     yield "pure technical", VolumeZScore(cfg_off)
     yield "pure technical", VolumeZScore(cfg_off, feature="volume_logz",
                                          name="volume_logz")
@@ -187,6 +206,7 @@ def run(cfg: dict, conn, split: str, policy_runs: list[str],
     out = {"distribution": distribution_table(frame),
            "histogram": histogram_table(frame)}
     comp, imp, lead, within, templates = [], [], [], [], []
+    comp_same, within_same = [], []
     for family, model in detectors(cfg_off, cfg_on, conn, train,
                                    policy_runs, template_runs):
         started = time.time()
@@ -199,15 +219,18 @@ def run(cfg: dict, conn, split: str, policy_runs: list[str],
         lead += lead_rows(model.name, pred)
         within.append(within_stock_table(cfg, {model.name: pred}, variant)
                       .assign(family=family))
+        c, w = same_hour_rows(cfg, cfg_off, model, pred, variant, family)
+        comp_same.append(c)
+        within_same.append(w)
         if isinstance(model, PatternTemplate):
             templates.append(model.template_table().assign(detector=model.name))
         del pred
         print(f"  {model.name:32s} {time.time() - started:5.0f}s")
 
-    comp = pd.concat(comp, ignore_index=True)
-    floor = comp[comp["baseline"] == "always_quiet"].set_index("slice")["precision"]
-    comp["lift"] = comp["precision"] / comp["slice"].map(floor)
+    comp = with_lift(pd.concat(comp, ignore_index=True))
     out["comparison"] = comp
+    out["comparison_same_hour"] = with_lift(pd.concat(comp_same, ignore_index=True))
+    out["within_stock_same_hour"] = pd.concat(within_same, ignore_index=True)
     out["impact"] = I.add_lift(pd.DataFrame(imp))
     out["impact_edges"] = pd.DataFrame({"bucket_upper_edge": edges,
                                         "quantile": cfg["eval"]["impact"]["quantiles"]})

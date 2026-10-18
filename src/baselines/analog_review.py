@@ -37,11 +37,13 @@ from pathlib import Path
 import pandas as pd
 
 from src.baselines.always_quiet import AlwaysQuiet
+from src.baselines.clock_only import ClockOnly
 from src.baselines.analog import AnalogMemory
 from src.baselines.compare import (build_training_frame, comparison_table,
                                    conform, noise_seeds)
 from src.baselines.cusum import CUSUM
-from src.baselines.guide_review import SLICES, configs, lead_rows
+from src.baselines.guide_review import (SLICES, configs, lead_rows,
+                                       same_hour_rows, with_lift)
 from src.baselines.prior_volume import final_bars
 from src.baselines.random_noise import RandomNoise
 from src.baselines.template import PatternTemplate
@@ -68,6 +70,7 @@ def references(cfg: dict, conn, train: pd.DataFrame):
     yield "null", AlwaysQuiet(cfg)
     for s in noise_seeds(cfg):
         yield "null", RandomNoise(cfg, seed=s)
+    yield "null", ClockOnly(cfg)
     yield "pure technical", VolumeZScore(cfg)
     yield "pure technical", CUSUM(cfg)
     yield "pure technical", PatternTemplate(cfg).fit(train, conn=conn)
@@ -154,6 +157,7 @@ def run(cfg: dict, conn, split: str, out_dir: Path,
     last_rows = last_bar_rows(frame)
 
     comp, lead, within, items, guessed = [], [], [], [], []
+    comp_same, within_same = [], []
 
     def measure(family, model, pred):
         table = comparison_table(cfg_off, {model.name: pred}, variant,
@@ -162,6 +166,9 @@ def run(cfg: dict, conn, split: str, out_dir: Path,
         lead.extend(lead_rows(model.name, pred))
         within.append(within_stock_table(cfg, {model.name: pred}, variant)
                       .assign(family=family))
+        c, w = same_hour_rows(cfg, cfg_off, model, pred, variant, family)
+        comp_same.append(c)
+        within_same.append(w)
 
     for family, model in references(cfg_off, conn, train):
         started = time.time()
@@ -186,12 +193,12 @@ def run(cfg: dict, conn, split: str, out_dir: Path,
                 guessed.append(e)
         print(f"  {model.name:40s} {time.time() - started:5.0f}s")
 
-    comp = pd.concat(comp, ignore_index=True)
-    floor = comp[comp["baseline"] == "always_quiet"].set_index("slice")["precision"]
-    comp["lift"] = comp["precision"] / comp["slice"].map(floor)
+    comp = with_lift(pd.concat(comp, ignore_index=True))
     guessed = pd.concat(guessed, ignore_index=True) if guessed else pd.DataFrame()
     out = {
         "comparison": comp,
+        "comparison_same_hour": with_lift(pd.concat(comp_same, ignore_index=True)),
+        "within_stock_same_hour": pd.concat(within_same, ignore_index=True),
         "lead_time": pd.DataFrame(lead),
         "within_stock": pd.concat(within, ignore_index=True),
         "items": pd.concat(items, ignore_index=True),
@@ -225,13 +232,15 @@ def main() -> None:
     started = time.time()
     out = run(cfg, conn, args.split, out_dir, tickers=tickers)
 
-    comp = out["comparison"]
-    for s in SLICES:
-        view = comp[comp["slice"] == s].sort_values("lift", ascending=False)
-        print(f"\n-- detection, {s} --")
-        print(view[["baseline", "precision", "lift", "recall",
-                    "median_lead_trading_h"]].to_string(
-                        index=False, float_format=lambda v: f"{v:.4f}"))
+    for key, label in (("comparison", "all hours"),
+                       ("comparison_same_hour", "closing-bar windows only")):
+        comp = out[key]
+        for s in SLICES:
+            view = comp[comp["slice"] == s].sort_values("lift", ascending=False)
+            print(f"\n-- detection, {s}, {label} --")
+            print(view[["baseline", "precision", "lift", "recall",
+                        "median_lead_trading_h"]].to_string(
+                            index=False, float_format=lambda v: f"{v:.4f}"))
     items = out["items"]
     top_n = cfg["baselines"]["analog"]["top_n"]
     for label in ("alerted", "last_bar"):

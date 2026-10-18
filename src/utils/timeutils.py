@@ -317,6 +317,36 @@ def bar_positions(ts, bar_seconds: int,
     return first[session] + (stamps - opens[session]) // int(bar_seconds)
 
 
+def seconds_to_session_close(ts,
+                             calendar: xc.ExchangeCalendar | None = None,
+                             strict: bool = True) -> np.ndarray:
+    """Seconds from each bar start to the close of ITS session, vectorised.
+
+    The clock-only null and the same-hour evaluation both ask "is this the
+    session's last bar?", over hundreds of thousands of rows, so this reads the
+    cached session arrays once rather than calling `next_market_close` per row.
+    Half days come out right because the closes come from the calendar.
+
+    A timestamp outside every session raises, as in `bar_positions`: no bar
+    starts there. `strict=False` returns NaN for it instead (a float array),
+    for callers that treat such a row as unreadable rather than as an error.
+    """
+    cal = calendar or get_market_calendar()
+    opens, closes = _session_bounds(cal.name)
+    stamps = np.asarray(ts, dtype="int64")
+    session = np.searchsorted(opens, stamps, side="right") - 1
+    inside = (session >= 0) & (stamps < closes[np.clip(session, 0, None)])
+    if not inside.all() and strict:
+        bad = stamps[~inside][0]
+        raise ValueError(
+            f"{ts_to_iso(int(bad))} is outside every {cal.name} session — it "
+            f"has no session close to measure to.")
+    out = closes[np.clip(session, 0, None)] - stamps
+    if strict:
+        return out
+    return np.where(inside, out, np.nan)
+
+
 def session_open_before(ts: int | float, sessions_back: int = 0,
                         calendar: xc.ExchangeCalendar | None = None) -> int:
     """Open of the session holding `ts`, or of one `sessions_back` before it.
