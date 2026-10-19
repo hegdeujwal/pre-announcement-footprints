@@ -45,6 +45,8 @@ from src.baselines.guide_review import (SLICES, configs, lead_rows,
 from src.baselines.random_noise import RandomNoise
 from src.baselines.ticker_prior import TickerPrior
 from src.baselines.volume_zscore import VolumeZScore
+from src.eval.lift_ci import alerted_windows
+from src.eval.same_hour import same_hour_view
 from src.eval.within_stock import within_stock_table
 from src.pipeline import holdout as H
 from src.pipeline.evalset import build_eval_frame, split_bounds
@@ -112,7 +114,8 @@ def open_holdout(out_dir: Path, reason: str | None, reopen: bool) -> None:
 
 
 def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
-        tickers: list[str] | None = None) -> dict[str, pd.DataFrame]:
+        tickers: list[str] | None = None,
+        save_windows: bool = False) -> dict[str, pd.DataFrame]:
     cfg_off, cfg_on = configs(cfg)
     variant = "news_adjusted"
     if split == "holdout":
@@ -127,7 +130,7 @@ def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
                                  t0_variant=variant)
     frame = conform(frame)
 
-    comp, comp_same, within, within_same, lead = [], [], [], [], []
+    comp, comp_same, within, within_same, lead, windows = [], [], [], [], [], []
     for family, model in detectors(cfg_off, cfg_on, seeds, conn=conn):
         started = time.time()
         pred = model.predict(frame, threshold=float("inf"), conn=conn,
@@ -140,6 +143,8 @@ def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
         comp_same.append(c)
         within_same.append(w)
         lead.extend(lead_rows(model.name, pred))
+        if save_windows:
+            windows.append(alerted_windows(model.name, same_hour_view(pred, cfg)))
         del pred
         print(f"  {model.name:32s} {time.time() - started:5.0f}s")
 
@@ -151,6 +156,10 @@ def run(cfg: dict, conn, split: str, out_dir: Path, seeds: list[int],
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, t in out.items():
         t.to_csv(out_dir / f"{name}.csv", index=False)
+    if windows:
+        # Per-window operating points on closing-bar windows, for `eval.lift_ci`.
+        pd.concat(windows, ignore_index=True).to_parquet(
+            out_dir / "windows_same_hour.parquet", index=False)
     return out
 
 
@@ -164,6 +173,8 @@ def main() -> None:
     ap.add_argument("--reopen", action="store_true")
     ap.add_argument("--seeds", type=int, nargs="*", default=None)
     ap.add_argument("--out-dir", default=None)
+    ap.add_argument("--save-windows", action="store_true",
+                    help="also write windows_same_hour.parquet for eval.lift_ci")
     ap.add_argument("--limit-tickers", type=int, default=None,
                     help="first N in-universe tickers only (smoke run)")
     args = ap.parse_args()
@@ -181,7 +192,8 @@ def main() -> None:
             "SELECT ticker FROM companies WHERE in_universe = 1 "
             "ORDER BY ticker LIMIT ?", (args.limit_tickers,))]
     started = time.time()
-    out = run(cfg, conn, args.split, out_dir, seeds, tickers=tickers)
+    out = run(cfg, conn, args.split, out_dir, seeds, tickers=tickers,
+              save_windows=args.save_windows)
 
     for key, label in (("comparison_same_hour", "CLOSING-BAR WINDOWS (read this)"),
                        ("comparison", "all hours (clock included)")):

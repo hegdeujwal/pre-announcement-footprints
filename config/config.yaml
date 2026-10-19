@@ -1122,6 +1122,15 @@ eval:
   # clock back in.
   same_hour:
     max_seconds_to_close: 3600
+  # Paired lift intervals (src/eval/lift_ci.py, added 2026-10-19): is one
+  # detector's budgeted lift really above another's? Bootstraps STOCKS, both
+  # detectors on the same draw. `references`: the rows every other detector
+  # is compared against.
+  lift_ci:
+    bootstrap: 2000
+    seed: 0
+    ci: 0.95
+    references: [volume_zscore, cusum, ticker_prior]
   # Item guesses from the analog memory (src/eval/analog_items.py, added
   # 2026-10-18): does the nearest past case name the right 8-K item, against
   # bar-blind guesses? The bootstrap resamples EVENTS. `seed` also drives the
