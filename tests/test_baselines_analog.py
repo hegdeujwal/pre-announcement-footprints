@@ -152,6 +152,25 @@ def test_explain_keeps_row_order_and_marks_unmatched_rows(fitted):
     assert pd.isna(out.loc[1, "guess"])
 
 
+
+def test_nearest_cases_lists_n_prefiling_cases_nearest_first(fitted):
+    val = windows([("D", "8.01")], seed=2)
+    out = fitted.nearest_cases(val, val.tail(1), n=3)
+    assert out["rank"].tolist() == [1, 2, 3]
+    assert out["distance"].is_monotonic_increasing
+    assert out["case_t0_utc"].notna().all()           # pre-filing cases only
+    assert (out["case_items"] == "8.01").all()        # 9.01 dropped, shape matched
+    assert fitted.k == 5                              # the vote's k is left alone
+
+
+def test_nearest_cases_respects_other_stocks_and_skips_unknown_rows(cfg):
+    model = AnalogMemory(cfg, exclude_same_ticker=True).fit(windows(train_spec()))
+    val = windows([("A", "8.01")], seed=3)
+    rows = pd.DataFrame({"ticker": ["A", "ZZ"], "ts_utc": [val.ts_utc.max(), 1]})
+    out = model.nearest_cases(val, rows, n=4)
+    assert len(out) == 4 and (out["case_ticker"] != "A").all()
+
+
 # -- the item-guess evaluation -----------------------------------------
 
 def test_substantive_items_keep_codes_as_strings():

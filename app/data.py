@@ -767,6 +767,28 @@ def rates_by(df: pd.DataFrame, key: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@st.cache_data(ttl=300)
+def _similar_cases() -> pd.DataFrame:
+    # Item codes as text: read as numbers, "1.10" would come back as 1.1.
+    name = config()["live"]["similar_cases"]["out"]
+    for root in (config()["paths"]["results"], config()["paths"]["processed"]):
+        path = REPO / root / name
+        if path.exists():
+            return pd.read_csv(path, dtype={"case_items": "string",
+                                            "ticker": "string",
+                                            "case_ticker": "string"})
+    return pd.DataFrame()
+
+
+def similar_cases(ticker: str, ts_utc: int) -> pd.DataFrame:
+    """Past pre-filing look-alikes for one alerted hour (`src.live.similar_cases`)."""
+    table = _similar_cases()
+    if table.empty:
+        return table
+    hit = table[(table["ticker"] == ticker) & (table["ts_utc"] == int(ts_utc))]
+    return hit.sort_values("rank")
+
+
 def event_study() -> pd.DataFrame:
     """The event-study table (`src.eval.event_study`), committed copy first."""
     return comparison(config()["event_study"]["out"])

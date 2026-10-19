@@ -521,6 +521,7 @@ def ticker_detail() -> None:
                "ticker over the 30 days before the flag. A number alone means "
                "little — the comparison is what makes it mean something.")
     _feature_table(row, price)
+    _similar_cases(row)
     _what_followed(row, state, live)
 
     a, b = st.columns(2)
@@ -587,6 +588,39 @@ def ticker_detail() -> None:
                 key=f"summary-pick-{ticker}",
                 format_func=lambda a: f"{ui.utc(when[a], False)} · {what[a] or '—'}")
             _llm_summary(pick, "history")
+
+
+def _similar_cases(row: pd.Series) -> None:
+    """Past pre-filing stretches in other companies that look like this hour.
+
+    The mentor's pattern memory, shown as precedent. The caption is binding,
+    not decoration: on validation the look-alike's filing type matched the
+    filing that followed no better than guessing (decision log 2026-10-18), so
+    the list must never read as a prediction of what will be filed.
+    """
+    cases = data.similar_cases(row["ticker"], int(row["ts_utc"]))
+    ui.section("Similar past cases",
+               "Earlier filings in other companies whose last 14 hours of "
+               "volume and price looked most like this hour. Context, not a "
+               "forecast — tested on past data, the look-alike's filing type "
+               "matched the filing that actually followed no more often than "
+               "a plain guess.")
+    if cases.empty:
+        st.caption("No look-alikes on record for this hour. They are computed "
+                   "by `python -m src.live.similar_cases`, which has not been "
+                   "run since this alert was raised.")
+        return
+    st.dataframe(pd.DataFrame({
+        "company": cases["case_ticker"],
+        "filed (UTC)": cases["case_t0_utc"].map(lambda t: ui.utc(t, False)),
+        "what it was": cases["case_items"].map(data.item_labels),
+        "closeness": cases["distance"].map(lambda d: f"{d:.2f}"),
+    }), width="stretch", hide_index=True,
+        column_config={"what it was": st.column_config.TextColumn(width="large"),
+                       "closeness": st.column_config.TextColumn(
+                           help="Distance between the two 14-hour stretches; "
+                                "smaller is closer. Comparable within one "
+                                "alert, not across alerts.")})
 
 
 def _what_followed(row: pd.Series, state: str, live: bool) -> None:

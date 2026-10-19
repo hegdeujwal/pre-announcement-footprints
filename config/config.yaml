@@ -899,6 +899,18 @@ live:
   # idempotent — while missing one at the boundary silently costs an outcome,
   # which is the whole point of the live run.
   filing_overlap_hours: 72
+  # Similar past cases beside each alert (src/live/similar_cases.py, added
+  # 2026-10-19 — the mentor's pattern memory, shown as context, never as a
+  # forecast of the filing type; see that module). variant: one of
+  # baselines.analog.variants — "other stocks", the mentor's own wording.
+  # n_cases: look-alikes listed per alert. margin_days: bars kept before a
+  # stock's first alert so every stretch is whole. out: under paths.processed.
+  similar_cases:
+    variant: "analog[price+volume, other stocks]"
+    n_cases: 3
+    margin_days: 14
+    alert_log: "live-log/alerts.csv"
+    out: "similar-cases/similar_cases.csv"
   # Learned policies scored live beside the two rule detectors. ADDED
   # 2026-09-25, weeks after the rules started, so the RL series in the alert
   # log starts later than theirs; compare detectors only over days all of them

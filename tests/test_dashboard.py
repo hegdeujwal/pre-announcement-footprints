@@ -572,3 +572,14 @@ def test_a_filing_summary_is_made_only_on_click(monkeypatch):
     buttons[-1].click().run()
     assert not at.exception, at.exception
     assert any("GROQ_API_KEY" in e.value for e in at.error)
+
+
+def test_similar_past_cases_always_carry_the_not_a_forecast_caption():
+    """The mentor's pattern memory sits beside each alert. Its filing types
+    named the filing that followed no better than a guess on validation, so
+    the section must say so whether or not look-alikes exist for the hour."""
+    at = _run("Ticker detail")
+    assert any(s.value == "Similar past cases" for s in at.subheader)
+    captions = " ".join(c.value for c in at.caption)
+    assert "Context, not a forecast" in captions
+

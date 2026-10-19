@@ -252,3 +252,38 @@ class AnalogMemory(Baseline):
                 "nearest_items", "nearest_distance", "n_neighbours"]
         out = pd.DataFrame(found, columns=cols).astype({"ts_utc": "int64"})
         return want.merge(out, on=["ticker", "ts_utc"], how="left")
+
+    def nearest_cases(self, frame: pd.DataFrame, rows: pd.DataFrame,
+                      n: int) -> pd.DataFrame:
+        """The `n` nearest past PRE-FILING cases for each (ticker, ts_utc) in `rows`.
+
+        Long format, one row per (query, rank): `case_ticker`, `case_t0_utc`,
+        `case_items` (substantive item codes, comma-joined) and `distance`.
+        What the dashboard shows beside an alert — past look-alikes, named.
+        A query whose stretch is undefined (no bars yet) gets no rows.
+        """
+        self._require_fit()
+        want = rows[["ticker", "ts_utc"]].astype({"ticker": str, "ts_utc": "int64"})
+        sub = frame[frame["ticker"].astype(str).isin(set(want["ticker"]))]
+        pool = self.cases["is_prefiling"].to_numpy(dtype=bool)
+        k = self.k
+        self.k = int(n)
+        found = []
+        try:
+            for block, Q, undefined in self._blocks(sub, "ticker"):
+                ticker = str(block["ticker"].iloc[0])
+                ts = set(want.loc[want["ticker"] == ticker, "ts_utc"])
+                take = block["ts_utc"].isin(ts).to_numpy() & ~undefined
+                if not take.any():
+                    continue
+                idx, dist = self._neighbours(Q[take], ticker, pool)
+                for t, ii, dd in zip(block["ts_utc"].to_numpy()[take], idx, dist):
+                    for rank, (i, d) in enumerate(zip(ii, dd), start=1):
+                        found.append((ticker, int(t), rank,
+                                      self.cases["ticker"].iat[i],
+                                      self.cases["t0_utc"].iat[i],
+                                      ",".join(self._items[i]), float(d)))
+        finally:
+            self.k = k
+        return pd.DataFrame(found, columns=["ticker", "ts_utc", "rank", "case_ticker",
+                                            "case_t0_utc", "case_items", "distance"])
