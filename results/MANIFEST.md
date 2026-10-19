@@ -6,7 +6,7 @@ Copied from `/home/ujwal/Pros/pre-announcement-footprints/data/processed/` by `s
 |---|---|---|
 | `phase10/FINAL-test-evaluation-r2.csv` | 181,919 | `23a0eafe6444bf4ddf0aaee30dc33eb5425c0c5fcd7aa9d46e104616571ef88a` |
 | `phase10/FINAL-test-run-r2.log` | 17,610 | `2d47349146d2ad60899858158279763984ce50f8ffd1acf7b092d96558c1a26d` |
-| `phase10/CORRECTION-NOTE.md` | 2,351 | `945bf612ffbc663121f0313f5f4764c6827a08b71f54fd7d923a476fd36c35a3` |
+| `phase10/CORRECTION-NOTE.md` | 4,229 | `c788c61cdde86ddf8613587f89049d22171544dffd722931521bede3bbdfe1c5` |
 | `baseline-comparison-val-r2.csv` | 210,727 | `51d0fbca84295e5928d1c3c8a227e998039cdb9a322340a30836d7ef39345b52` |
 | `p8-with-news-val-r2.csv` | 128,612 | `d23d2e690c82c3aeee6c644a220989fa9ba726f05629167893fde18db73f65cf` |
 | `event-study-trainval.csv` | 28,168 | `b74ae5bbea314b0b2843fc1433891cd48f9dbb39d54433f6ec5249441a1348af` |
@@ -22,3 +22,11 @@ Copied from `/home/ujwal/Pros/pre-announcement-footprints/data/processed/` by `s
 | `guide-review/indicator_shift.csv` | 2,157 | `b05e7115fe8c307fbfe282a582990252a318a24b0b258065cecb8ca4523813b7` |
 | `guide-review/pattern_paths.csv` | 3,596 | `69e5957a84d36ab0c71d3028cca641f5ec755692c1c187e8b954585be6a859b1` |
 | `guide-review/run.log` | 12,344 | `5ca24267f1355a5df31f3a857c17f700859a5e9986885fa29ad89c3f015e1623` |
+| `footprint-net/val/comparison_same_hour.csv` | 179,481 | `e7bb24197a7d4491534820a6157773c8c06d9140d130a7ae07ca42b78e339b6f` |
+| `footprint-net/val/within_stock_same_hour.csv` | 10,759 | `15ba82d88e95e20182c51c83b63c7d1eb3049b18fb8fa4ece5a752a354300aab` |
+| `footprint-net/holdout/comparison.csv` | 166,551 | `2e3f4d82f52983c96f024fc817a5f0f785db4e64133c33a2b8ec590a2565f82c` |
+| `footprint-net/holdout/comparison_same_hour.csv` | 169,908 | `22c9cecf2a48256609cd934ab70ff2673e4d8314b3872e34b92b3cbf83100be9` |
+| `footprint-net/holdout/within_stock_same_hour.csv` | 10,746 | `9d11505ff34e4ae292744b3e52acbc7a3e738beba65b5c8b39464913e5f376d9` |
+| `footprint-net/holdout/lift_ci.csv` | 10,836 | `b9ce54181452e2b7da5e32dd78f9409b9222bde901942bc2dcfeb0e821d5f85f` |
+| `footprint-net/holdout/holdout_opened.json` | 855 | `7a67502ff9676acf54ef60b954dfad09739eabe0aae3bb523c3acc4937e423e5` |
+| `similar-cases/similar_cases.csv` | 1,963,987 | `03a49d7a16390b94a8a1096979d3e9b32cef7dee226f6b2be7cd41752226ba94` |

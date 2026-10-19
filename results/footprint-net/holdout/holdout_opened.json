@@ -1,0 +1,18 @@
+{
+  "opened_at": "2026-10-19 05:47:30Z",
+  "reason": "re-score only to save per-window operating points for a paired stock-bootstrap error bar (user approved 2026-10-19); no model, threshold or config changed",
+  "history": [
+    {
+      "opened_at": "2026-10-18 11:32:52Z",
+      "reason": "final FootprintNet evaluation, fresh post-study holdout, option A (user decision 2026-10-18)"
+    },
+    {
+      "opened_at": "2026-10-18 11:34:22Z",
+      "reason": "re-run: first opening (11:32Z) aborted by the sealed-set guard before any score was computed; early-August windows reaching into late July are now dropped"
+    },
+    {
+      "opened_at": "2026-10-19 05:47:30Z",
+      "reason": "re-score only to save per-window operating points for a paired stock-bootstrap error bar (user approved 2026-10-19); no model, threshold or config changed"
+    }
+  ]
+}

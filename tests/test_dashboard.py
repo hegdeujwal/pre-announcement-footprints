@@ -583,3 +583,11 @@ def test_similar_past_cases_always_carry_the_not_a_forecast_caption():
     captions = " ".join(c.value for c in at.caption)
     assert "Context, not a forecast" in captions
 
+
+def test_evaluation_carries_the_clock_note_and_the_same_hour_table():
+    """The unscheduled lifts were mostly the closing bar (decision log
+    2026-10-18). The any-hour table keeps a standing warning, and the fair
+    same-hour comparison sits beneath it."""
+    at = _run("Evaluation")
+    assert any("mostly time of day" in w.value for w in at.warning)
+    assert any(s.value.startswith("Same hour of day") for s in at.subheader)

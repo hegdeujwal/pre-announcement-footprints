@@ -843,6 +843,70 @@ _NULL_NOTE = (
 
 
 
+#: Shown beside every lift table that scores windows at any hour. Quoted from
+#: the 2026-10-18 section of `CORRECTION-NOTE.md`.
+_CLOCK_NOTE = (
+    "**The unscheduled lifts in this table are mostly time of day, not a "
+    "footprint.** Filings land after the close, so 89.5% of unscheduled "
+    "pre-filing windows end on the session's last bar — the busiest hour — "
+    "while a quiet window lands there about 1 time in 7. A detector that "
+    "reads nothing but the clock scores 6.7× on unscheduled filings in "
+    "validation, above every row here. The fair comparison, at the same hour "
+    "of day, is in **Same hour of day** below."
+)
+#: The same-hour tables on the fresh post-study holdout (`footprint_review`).
+_SAME_HOUR = "footprint-net/holdout/comparison_same_hour.csv"
+_LIFT_CI = "footprint-net/holdout/lift_ci.csv"
+
+
+def _same_hour() -> None:
+    """FootprintNet and the classical detectors, closing-bar windows only."""
+    table = data.comparison(_SAME_HOUR)
+    ui.section("Same hour of day — the fair comparison",
+               "Only windows scored on the session's last bar, so knowing the "
+               "time of day is worth nothing (the clock-only row sits at ~1×). "
+               "Fresh data: Aug 1 – Oct 17 2026, after the study, looked at "
+               "once. A range is the spread over 5 training seeds.")
+    if table.empty:
+        st.caption("Not built yet: `python -m src.baselines.footprint_review "
+                   "--split holdout`.")
+        return
+    table = table.assign(group=table["baseline"].str.replace(
+        r"\[s?\d+\]$", "", regex=True))
+    cols = {}
+    for sl in ("scheduled", "unscheduled"):
+        v = table[table["slice"] == sl].groupby("group")["lift"].agg(["min", "max"])
+        cols[f"{sl} lift"] = v.apply(
+            lambda r: f"{r['min']:.2f}×" if abs(r["max"] - r["min"]) < 0.005
+            else f"{r['min']:.2f}–{r['max']:.2f}×", axis=1)
+        cols[f"_{sl}"] = v["max"]
+    show = pd.DataFrame(cols).sort_values("_scheduled", ascending=False)
+    n = table[table["baseline"] == "always_quiet"].set_index("slice")["n_positive"]
+    st.dataframe(show[[c for c in show if not c.startswith("_")]]
+                 .rename_axis("detector").reset_index(),
+                 width="stretch", hide_index=True)
+    st.caption(f"Filings in this view: {ui.num(n.get('scheduled', 0))} scheduled, "
+               f"{ui.num(n.get('unscheduled', 0))} unscheduled. "
+               "`ticker_prior` picks stocks that file often and never an hour: "
+               "a detector below it is mostly choosing companies, not timing.")
+    ci = data.comparison(_LIFT_CI)
+    if not ci.empty:
+        rows = ci[ci["detector"].str.startswith("footprint_")
+                  & ~ci["detector"].str.contains("surprise")
+                  & (((ci["slice"] == "scheduled") & (ci["reference"] == "volume_zscore"))
+                     | ((ci["slice"] == "unscheduled") & (ci["reference"] == "ticker_prior")))]
+        st.dataframe(pd.DataFrame({
+            "slice": rows["slice"], "FootprintNet": rows["detector"],
+            "against": rows["reference"],
+            "lift ratio": rows["lift_ratio"].map(lambda v: f"{v:.2f}×"),
+            "95% interval": [f"{a:.2f}–{b:.2f}×" for a, b in zip(rows["ci_lo"], rows["ci_hi"])],
+            "draws it wins": rows["p_better"].map(lambda v: ui.pct(v, 0)),
+        }), width="stretch", hide_index=True)
+        st.caption("Uncertainty from resampling whole stocks, both detectors on "
+                   "the same draw. An interval that stays above 1× means the "
+                   "gap is not luck.")
+
+
 def evaluation() -> None:
     table = pd.DataFrame()
     source = ""
@@ -950,6 +1014,10 @@ def evaluation() -> None:
             + f", against a ceiling of {ui.pct(top['max_precision'], 2)}. "
             f"**If a simple baseline wins, it is shown winning** — that is the "
             f"finding, not something to hide.")
+
+    if sl != "scheduled":
+        st.warning(_CLOCK_NOTE)
+    _same_hour()
 
     _event_study()
     _item_lift(table, variant)

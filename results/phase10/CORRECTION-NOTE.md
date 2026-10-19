@@ -45,3 +45,39 @@ to report that.
 
 **`always_quiet` is correctly flagged degenerate** (tie_spill_ratio 52.9) while
 every real detector sits at 1.00.
+
+## 2026-10-18 — read before quoting the UNSCHEDULED column
+
+**The unscheduled lifts above (cusum 5.58x, volume_zscore 5.27x, rl 5.46x)
+are mostly time of day, not a footprint.** Do not quote them as detection.
+
+Why: a positive window is scored on its last bar before t0, and 89.5% of
+unscheduled positives' last bars are the session's closing bar (15:30 ET) —
+filings land after the close. A quiet window is one random bar, a closing bar
+only ~1 time in 7. The closing bar is also the busiest hour of the day, so any
+volume score ranks it high. A detector that reads **nothing but the clock**
+(`clock_only`: rank by nearness to the close) scores **6.69x** on unscheduled
+validation filings, above every detector in this table; its within-stock AUC
+is 0.877.
+
+The fair comparison scores only closing-bar windows, where the clock is worth
+nothing (`eval.same_hour`, clock_only falls to ~1x):
+
+| | scheduled | unscheduled |
+|---|---|---|
+| volume_zscore (validation) | 3.07x | 1.19x |
+| cusum (validation) | 3.07x | 1.19x |
+| volume_zscore (fresh Aug–Oct 2026 holdout) | 4.56x | 1.00x |
+| cusum (fresh holdout) | 4.49x | 0.98x |
+| FootprintNet, 10 runs (fresh holdout) | 6.4–7.0x | 1.65–1.93x |
+| stock-only prior (fresh holdout) | 1.06x | **2.44x** |
+
+**What stands:** a footprint before SCHEDULED filings (earnings), at the same
+hour of day — a real effect, and dates are public, so it is anticipation, not
+leakage. **What does not:** a timing footprint before UNSCHEDULED filings.
+At the same hour, every detector's within-stock AUC is ~0.53 with intervals
+touching 0.5, and what lift remains comes from choosing filing-prone stocks.
+
+The sealed test set was NOT re-opened for this; the corrected figures are from
+validation and from a fresh post-study holdout (`footprint-net/holdout/`). The
+2026-09-10 table above is kept unchanged as the record of what was run.

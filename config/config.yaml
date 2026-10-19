@@ -40,6 +40,18 @@ results_export:
   - guide-review/indicator_shift.csv
   - guide-review/pattern_paths.csv
   - guide-review/run.log
+  # FootprintNet (2026-10-18/19): validation and the fresh post-study holdout,
+  # closing-bar view first. holdout_opened.json is the record of every opening.
+  # Written by src.baselines.footprint_review and src.eval.lift_ci.
+  - footprint-net/val/comparison_same_hour.csv
+  - footprint-net/val/within_stock_same_hour.csv
+  - footprint-net/holdout/comparison.csv
+  - footprint-net/holdout/comparison_same_hour.csv
+  - footprint-net/holdout/within_stock_same_hour.csv
+  - footprint-net/holdout/lift_ci.csv
+  - footprint-net/holdout/holdout_opened.json
+  # Past look-alikes beside each live alert (src.live.similar_cases).
+  - similar-cases/similar_cases.csv
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps
