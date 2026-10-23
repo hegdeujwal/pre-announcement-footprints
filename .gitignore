@@ -28,6 +28,8 @@ data/**
 
 # ML artifacts
 *.pt
+# The frozen live models are the pre-registration, so they ARE committed.
+!models/live/**/model.pt
 *.pth
 *.ckpt
 *.h5

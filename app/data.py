@@ -438,9 +438,11 @@ def strength_distribution(df: pd.DataFrame) -> dict:
     if df.empty or "score" not in df or "threshold" not in df:
         return {"median": None, "p90": None, "n": 0}
     # Rule detectors only: a policy's P(FLAG) always sits at about 1.00x its
-    # cut, and counting it would drag the bands' own reference point down.
+    # cut, and counting it would drag the bands' own reference point down;
+    # FootprintNet's logit has no meaningful multiple either.
     if "detector" in df:
-        df = df[~df["detector"].astype(str).str.startswith("rl_policy")]
+        df = df[~df["detector"].astype(str).str.startswith(("rl_policy",
+                                                             "footprint_"))]
     mult = (df["score"] / df["threshold"]).replace(
         [float("inf"), float("-inf")], pd.NA).dropna()
     if mult.empty:

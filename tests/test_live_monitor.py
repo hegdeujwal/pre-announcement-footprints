@@ -407,6 +407,117 @@ def test_the_policy_uses_its_budget_cut_not_its_own_half_rule(cfg):
 
 
 # --------------------------------------------------------------------------
+# FootprintNet in the live run (2026-10-23)
+# --------------------------------------------------------------------------
+def _with_footprint(cfg, run, sha):
+    return {**cfg, "live": {**cfg.get("live", {}),
+                            "footprint": [{"run": str(run), "threshold": 1.0,
+                                           "sha256": sha}]}}
+
+
+def test_the_configured_footprint_model_is_frozen_in_git_and_matches_its_hash(cfg):
+    from src.live.monitor import live_footprints
+    nets = live_footprints(cfg)
+    assert nets, "config names no live FootprintNet run"
+    for n in nets:
+        assert n["run"].startswith("models/live/")
+        assert n["name"].startswith("footprint_")
+
+
+def test_a_changed_footprint_model_fails_the_run(cfg, tmp_path):
+    from src.live.monitor import live_footprints
+    run = tmp_path / "footprint-s1-pretrained"
+    run.mkdir()
+    (run / "model.pt").write_bytes(b"not the frozen model")
+    with pytest.raises(SystemExit, match="has been changed"):
+        live_footprints(_with_footprint(cfg, run, "0" * 64))
+
+
+def test_a_missing_footprint_model_fails_the_run_not_silently(cfg, tmp_path):
+    from src.live.monitor import live_footprints
+    with pytest.raises(SystemExit, match="must not drop out"):
+        live_footprints(_with_footprint(cfg, tmp_path / "footprint-s1-pretrained",
+                                        "0" * 64))
+
+
+def test_the_footprint_name_is_the_study_tables_row_name():
+    from src.live.monitor import footprint_name
+    assert footprint_name("models/live/footprint-s46-pretrained") == \
+        "footprint_pretrained[s46]"
+
+
+def test_the_footprint_model_uses_its_validation_budget_cut(cfg):
+    from src.live.monitor import footprint_name
+    cuts = default_thresholds(cfg)
+    for entry in cfg["live"]["footprint"]:
+        assert cuts[footprint_name(entry["run"])] == float(entry["threshold"])
+
+
+def _footprint(cfg):
+    pytest.importorskip("torch")
+    from src.live.monitor import live_footprints
+    runs = [n["run"] for n in live_footprints(cfg)]
+    return build_detectors(cfg, footprint_runs=runs), runs
+
+
+def test_footprint_scores_full_windows_on_the_frame_hours_only(cfg, conn, as_of):
+    """It fires only on the hours the other detectors score, and each score
+    is the one a much longer history gives: no window is ever truncated."""
+    from src.baselines.footprint_net import FootprintDetector
+    from src.live.monitor import history_frame, technical_on
+
+    detectors, runs = _footprint(cfg)
+    live = conform(latest_bar_frame(cfg, conn, ["AAA", "BBB"], as_of=as_of))
+    history = history_frame(cfg, conn, detectors, ["AAA", "BBB"], as_of=as_of)
+    name = next(n for n in detectors if n.startswith("footprint_"))
+    alerts = [a for a in scan(cfg, conn, live, detectors,
+                              thresholds={"cusum": 1e9, "volume_zscore": 1e9,
+                                          name: -1e9}, history=history)
+              if a.detector == name]
+    assert {(a.ticker, a.ts_utc) for a in alerts} == \
+        set(zip(live["ticker"], live["ts_utc"].astype(int)))
+
+    long = conform(latest_bar_frame(technical_on(cfg), conn, ["AAA", "BBB"],
+                                    as_of=as_of, lookback_bars=300))
+    model = FootprintDetector(technical_on(cfg), runs[0], "detect", name)
+    ref = pd.Series(model.score(long).to_numpy(),
+                    index=pd.MultiIndex.from_arrays([long["ticker"].astype(str),
+                                                     long["ts_utc"].astype(int)]))
+    for a in alerts:
+        assert a.score == pytest.approx(ref[(a.ticker, a.ts_utc)], abs=1e-5)
+    # Its alerts carry the same feature columns as everyone else's.
+    assert set(alerts[0].features) == {c for c in live.columns
+                                       if c not in ("window_id", "ticker",
+                                                    "t0_utc", "is_scheduled",
+                                                    "item_code", "ts_utc")}
+
+
+def test_footprint_without_history_is_refused(cfg, conn, as_of):
+    detectors, _ = _footprint(cfg)
+    live = conform(latest_bar_frame(cfg, conn, ["AAA"], as_of=as_of))
+    with pytest.raises(ValueError, match="history"):
+        scan(cfg, conn, live, detectors)
+
+
+def test_footprint_skips_hours_whose_window_would_reach_the_seal(cfg, conn, as_of):
+    """History bars in the sealed test period are dropped, and an hour left
+    without a full window raises nothing rather than a truncated score."""
+    from src.live.monitor import history_frame
+
+    detectors, _ = _footprint(cfg)
+    live = conform(latest_bar_frame(cfg, conn, ["AAA"], as_of=as_of))
+    history = history_frame(cfg, conn, detectors, ["AAA"], as_of=as_of)
+    name = next(n for n in detectors if n.startswith("footprint_"))
+    cut = history.iloc[10:].reset_index(drop=True)      # as if 10 bars were sealed
+    alerts = [a for a in scan(cfg, conn, live, detectors,
+                              thresholds={"cusum": 1e9, "volume_zscore": 1e9,
+                                          name: -1e9}, history=cut)
+              if a.detector == name]
+    assert len(alerts) == len(live) - 10
+    assert min(a.ts_utc for a in alerts) == int(live["ts_utc"].iloc[10])
+
+
+# --------------------------------------------------------------------------
 # The session volume check (2026-10-07)
 # --------------------------------------------------------------------------
 def _session_bars(conn, cfg, ticker, day, volumes):

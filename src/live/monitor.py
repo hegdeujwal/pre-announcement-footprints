@@ -181,13 +181,51 @@ def live_policies(cfg: dict) -> list[dict]:
     return out
 
 
-def build_detectors(cfg: dict, policy_runs: list[str] | None = None) -> dict:
+def footprint_name(run) -> str:
+    """The name a FootprintNet run is logged under, e.g. `footprint_pretrained[s46]`
+    for `footprint-s46-pretrained` — the row name the study tables use."""
+    from pathlib import Path
+    _, seed, init = Path(run).name.split("-", 2)
+    return f"footprint_{init}[{seed}]"
+
+
+def live_footprints(cfg: dict) -> list[dict]:
+    """The FootprintNet runs config says to score live, each checked on disk.
+
+    Same rule as `live_policies`: missing or changed weights fail the run.
+    """
+    import hashlib
+    from pathlib import Path
+
+    out = []
+    for entry in (cfg.get("live") or {}).get("footprint") or []:
+        run = Path(entry["run"])
+        model = run / "model.pt"
+        if not model.exists():
+            raise SystemExit(
+                f"live.footprint names {run}, but {model} does not exist. The "
+                f"model is part of the pre-registered live test and must not "
+                f"drop out silently.")
+        digest = hashlib.sha256(model.read_bytes()).hexdigest()
+        if digest != entry["sha256"]:
+            raise SystemExit(
+                f"{model} has sha256 {digest}, but config records "
+                f"{entry['sha256']}. The frozen model has been changed; "
+                f"scoring it would quietly change the live experiment.")
+        out.append({"run": str(run), "name": footprint_name(run),
+                    "threshold": float(entry["threshold"])})
+    return out
+
+
+def build_detectors(cfg: dict, policy_runs: list[str] | None = None,
+                    footprint_runs: list[str] | None = None) -> dict:
     """Every detector the monitor should run.
 
     CUSUM and volume z-score come from config at their P5-03/P5-04 tuned
-    settings. Policies are loaded from P6-03 run directories. Always-quiet is
-    omitted deliberately — it never alerts, so it would contribute nothing to
-    an alert log, and its floor is already measured offline.
+    settings. Policies are loaded from P6-03 run directories, FootprintNet
+    from its frozen run. Always-quiet is omitted deliberately — it never
+    alerts, so it would contribute nothing to an alert log, and its floor is
+    already measured offline.
     """
     from src.baselines import CUSUM, VolumeZScore
 
@@ -195,27 +233,106 @@ def build_detectors(cfg: dict, policy_runs: list[str] | None = None) -> dict:
     for run in (policy_runs or []):
         from src.rl import load_policy
         detectors[policy_name(run)] = load_policy(cfg, run)
+    for run in (footprint_runs or []):
+        from src.baselines.footprint_net import FootprintDetector
+        name = footprint_name(run)
+        detectors[name] = FootprintDetector(technical_on(cfg), run, "detect", name)
     return detectors
 
 
+def technical_on(cfg: dict) -> dict:
+    """`cfg` with technical features enabled — what FootprintNet reads."""
+    import copy
+    on = copy.deepcopy(cfg)
+    on["features"]["technical"]["enabled"] = True
+    return on
+
+
+def needs_history(model) -> int:
+    """Bars before a scored hour a detector reads, beyond the frame's own.
+
+    0 for the rules and the policy, which score the frame as built.
+    FootprintNet reads a `length`-bar window, so it is given `length - 1`
+    earlier bars and never scores a truncated one.
+    """
+    from src.baselines.footprint_net import FootprintDetector
+    if isinstance(model, FootprintDetector):
+        return int(model.manifest["length"]) - 1
+    return 0
+
+
+def history_frame(cfg: dict, conn, detectors: dict,
+                  tickers: list[str] | None = None,
+                  as_of: int | None = None) -> pd.DataFrame | None:
+    """The frame FootprintNet scores: technical features on, and `needs_history`
+    extra bars before the usual lookback. None when no detector needs one.
+
+    Same `latest_bar_frame` call as the main frame, so its last
+    `decision.horizon_hours` bars per ticker are exactly the main frame's bars.
+
+    Bars in the sealed test period are dropped. A ticker whose newest bars
+    are from early August would otherwise reach back into it (July), which
+    `assert_not_test` rightly refuses; its hours left without a full window
+    are then not scored (`scan`), the same "drop, don't trim" rule as
+    `footprint_review.inside_holdout`.
+    """
+    from src.pipeline.split import boundaries
+    from src.utils.timeutils import date_str_to_ts
+
+    extra = max((needs_history(m) for m in detectors.values()), default=0)
+    if not extra:
+        return None
+    lookback = int(cfg["decision"]["horizon_hours"]) + extra
+    out = conform(latest_bar_frame(technical_on(cfg), conn, tickers,
+                                   as_of=as_of, lookback_bars=lookback))
+    _, val_end = boundaries(cfg)
+    study_end = date_str_to_ts(cfg["study_window"]["end"])
+    ts = out["ts_utc"].astype("int64")
+    return out[(ts < val_end) | (ts >= study_end)].reset_index(drop=True)
+
+
 def scan(cfg: dict, conn, frame: pd.DataFrame,
-         detectors: dict, thresholds: dict | None = None) -> list[Alert]:
+         detectors: dict, thresholds: dict | None = None,
+         history: pd.DataFrame | None = None) -> list[Alert]:
     """Score the live frame with every detector and return what fired.
 
     Thresholds come from each detector's tuned operating point, so a live alert
     means the same thing a validation alert meant. Without that, "it raised N
     alerts" would be a statement about an arbitrary cut.
+
+    A detector that `needs_history` scores `history` (see `history_frame`)
+    instead, and only its bars that are also in `frame`, with that many
+    earlier bars in `history`, can fire: every detector alerts on the same
+    hours, and none on a truncated window. Its alerts carry `frame`'s
+    features, like everyone else's.
     """
     thresholds = thresholds or default_thresholds(cfg)
     feature_cols = [c for c in frame.columns if c not in LABEL_COLS
                     and c != "ts_utc"]
+    keys = pd.MultiIndex.from_arrays([frame["ticker"].astype(str),
+                                      frame["ts_utc"].astype("int64")])
 
     alerts: list[Alert] = []
     for name, model in detectors.items():
         threshold = float(thresholds.get(name, thresholds.get("default", 2.5)))
-        scored = model.predict(frame, threshold=threshold, conn=conn,
+        source_frame = frame
+        extra = needs_history(model)
+        if extra:
+            if history is None:
+                raise ValueError(f"{name} reads the bars before each hour; "
+                                 f"pass history=history_frame(...)")
+            source_frame = history
+        scored = model.predict(source_frame, threshold=threshold, conn=conn,
                                context=f"live/{name}")
         fired = scored[scored["action"] == "FLAG"]
+        if extra:
+            h = history.sort_values(["ticker", "ts_utc"], kind="stable")
+            whole = h[h.groupby("ticker").cumcount() >= extra]
+            ok = pd.MultiIndex.from_arrays([whole["ticker"].astype(str),
+                                            whole["ts_utc"].astype("int64")])
+            at = pd.MultiIndex.from_arrays([fired["ticker"].astype(str),
+                                            fired["ts_utc"].astype("int64")])
+            fired = fired[at.isin(keys) & at.isin(ok)]
         for _, row in fired.iterrows():
             source = frame[(frame["ticker"] == row["ticker"]) &
                            (frame["ts_utc"] == row["ts_utc"])]
@@ -246,6 +363,8 @@ def default_thresholds(cfg: dict) -> dict:
             "default": 0.5}          # policies emit P(FLAG)
     for entry in (cfg.get("live") or {}).get("policies") or []:
         cuts[policy_name(entry["run"])] = float(entry["threshold"])
+    for entry in (cfg.get("live") or {}).get("footprint") or []:
+        cuts[footprint_name(entry["run"])] = float(entry["threshold"])
     return cuts
 
 
@@ -675,8 +794,11 @@ def main() -> None:
           f"{frame['ticker'].nunique():,} tickers; newest bar "
           f"{ts_to_iso(latest)} ({split_of(cfg, latest)})")
 
-    detectors = build_detectors(cfg, args.policy_runs)
-    alerts = scan(cfg, conn, frame, detectors)
+    detectors = build_detectors(cfg, args.policy_runs,
+                                [f["run"] for f in live_footprints(cfg)])
+    alerts = scan(cfg, conn, frame, detectors,
+                  history=history_frame(cfg, conn, detectors, tickers,
+                                        as_of=args.as_of))
 
     if not alerts:
         print("no alerts.")

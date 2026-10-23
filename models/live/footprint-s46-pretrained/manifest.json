@@ -1,0 +1,125 @@
+{
+  "best_inner_auc": 0.6887544493017532,
+  "channels": [
+    "volume_logz",
+    "volume_tod_z",
+    "ret_rel_1h",
+    "range_z",
+    "candle_body",
+    "gap_open",
+    "volatility"
+  ],
+  "config": {
+    "channels": [
+      "volume_logz",
+      "volume_tod_z",
+      "ret_rel_1h",
+      "range_z",
+      "candle_body",
+      "gap_open",
+      "volatility"
+    ],
+    "clip": 10.0,
+    "dropout": 0.2,
+    "finetune": {
+      "batch": 256,
+      "epochs": 40,
+      "lr": 0.0005,
+      "negatives_per_positive": 20,
+      "patience": 6,
+      "weight_decay": 0.0001
+    },
+    "hidden": 64,
+    "inner_val_fraction": 0.15,
+    "length": 48,
+    "pretrain": {
+      "batch": 256,
+      "epochs": 8,
+      "lr": 0.001,
+      "patience": 2,
+      "targets": [
+        "volume_logz",
+        "range_z"
+      ],
+      "warmup": 8,
+      "windows_per_epoch": 100000
+    },
+    "runs_dir": "data/runs/footprint-net",
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "threads": 8
+  },
+  "elapsed_s": 124.7,
+  "history": [
+    {
+      "epoch": 0,
+      "inner_auc": 0.6739243951804783,
+      "train_bce": 1.1627975134956403
+    },
+    {
+      "epoch": 1,
+      "inner_auc": 0.6887544493017532,
+      "train_bce": 1.1194143212658167
+    },
+    {
+      "epoch": 2,
+      "inner_auc": 0.6802098864912538,
+      "train_bce": 1.1026965502961648
+    },
+    {
+      "epoch": 3,
+      "inner_auc": 0.6861625922377529,
+      "train_bce": 1.0986961629938952
+    },
+    {
+      "epoch": 4,
+      "inner_auc": 0.6820013451008509,
+      "train_bce": 1.0906353944186373
+    },
+    {
+      "epoch": 5,
+      "inner_auc": 0.6831148601919941,
+      "train_bce": 1.083709519854143
+    },
+    {
+      "epoch": 6,
+      "inner_auc": 0.683512997354212,
+      "train_bce": 1.07557661040369
+    },
+    {
+      "epoch": 7,
+      "inner_auc": 0.6852346629951335,
+      "train_bce": 1.070955199736325
+    }
+  ],
+  "init": "pretrained",
+  "length": 48,
+  "model_sha256": "29c82cb161d11d7e5083580a36e043a370ae5ee5b9f24ee63ff40b186d96e4d3",
+  "n_fit_bars": 1398535,
+  "n_inner_bars": 252175,
+  "n_inner_neg": 7940,
+  "n_inner_pos": 397,
+  "n_inputs": 9,
+  "n_neg": 74800,
+  "n_pos": 3740,
+  "seed": 46,
+  "stage": "finetune",
+  "target_mean": [
+    0.027622635107540556,
+    0.0428852810121052
+  ],
+  "target_sd": [
+    1.1138462665744064,
+    1.147315702254169
+  ],
+  "targets": [
+    "volume_logz",
+    "range_z"
+  ],
+  "torch": "2.13.0+cu130"
+}

@@ -3,8 +3,9 @@
 # Runs after the US close on each trading day and, in one pass:
 #   1. fetches the price bars that appeared since the last run (yfinance),
 #   2. fetches 8-K filings accepted since the last one on record (SEC EDGAR),
-#   3. scores the new bars with the tuned detectors — the two rules and, from
-#      2026-09-25, the frozen RL policy in models/live/ (config live.policies),
+#   3. scores the new bars with the tuned detectors — the two rules, from
+#      2026-09-25 the frozen RL policy in models/live/ (config live.policies),
+#      and from 2026-10-23 frozen FootprintNet (config live.footprint),
 #   4. appends any alerts to the log,
 #   5. backfills outcomes for alerts whose 48-hour window has now elapsed,
 #   6. commits the log, and the outcomes graded so far, back to this
@@ -231,7 +232,8 @@ jobs:
           # since 2026-09-25. CPU-only torch from PyTorch's own index: the
           # default wheel bundles CUDA, several GB this job never uses, and
           # the policy is two 64-unit layers. Versions match requirements.txt
-          # and the policy's manifest.
+          # and the policy's manifest. FootprintNet (config live.footprint)
+          # needs nothing more than torch.
           pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
           pip install gymnasium==1.3.0 stable-baselines3==2.9.0
 

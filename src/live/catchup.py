@@ -150,7 +150,7 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     result["tickers"] = int(frame["ticker"].nunique())
     result["newest_bar_utc"] = int(frame["ts_utc"].max())
 
-    alerts = scan_alerts(cfg, conn, frame)
+    alerts = scan_alerts(cfg, conn, frame, tickers, as_of=as_of)
     result["alerts_found"] = len(alerts)
     result["alerts_new"] = append(conn, alerts)
 
@@ -186,11 +186,16 @@ def run(cfg: dict, conn, max_tickers: int | None = None,
     return result
 
 
-def scan_alerts(cfg: dict, conn, frame):
-    """Score the frame with the rule detectors and every configured policy."""
-    from src.live.monitor import build_detectors, live_policies, scan
+def scan_alerts(cfg: dict, conn, frame, tickers=None, as_of=None):
+    """Score the frame with the rule detectors, every configured policy and
+    every configured FootprintNet run."""
+    from src.live.monitor import (build_detectors, history_frame,
+                                  live_footprints, live_policies, scan)
     runs = [p["run"] for p in live_policies(cfg)]
-    return scan(cfg, conn, frame, build_detectors(cfg, policy_runs=runs))
+    nets = [f["run"] for f in live_footprints(cfg)]
+    detectors = build_detectors(cfg, policy_runs=runs, footprint_runs=nets)
+    return scan(cfg, conn, frame, detectors,
+                history=history_frame(cfg, conn, detectors, tickers, as_of))
 
 
 def _volume_line(check: dict | None) -> str:

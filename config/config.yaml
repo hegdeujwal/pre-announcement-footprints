@@ -967,6 +967,32 @@ live:
     - run: models/live/p6-r2-s43
       threshold: 0.994017
       sha256: 4ad490cdad03403e5ce2600e5ea948f6ebdb44a28f25632d8e39be0b226fc6a0
+  # FootprintNet scored live beside the others. ADDED 2026-10-23, so its
+  # series starts later again: compare detectors only over days all of them
+  # ran (filter on raised_utc).
+  #
+  # WHICH RUN, AND WHY. s46-pretrained had the best precision at budget on
+  # VALIDATION among the ten detect runs (all slice, all hours, news-adjusted
+  # t0: 0.0408, lift 8.8x, data/processed/footprint-net/val/comparison.csv),
+  # the same rule that picked the live RL policy. The holdout played no part.
+  #
+  # WHY THIS THRESHOLD. The score is a logit with no natural cut; 1.685717 is
+  # its budget-implied cut on that same validation table, the way every other
+  # live threshold was set. A dry run over the latest 72,000 stored bars
+  # (to 2026-10-16, earnings season) raised 3,566 alerts against cusum 1,362,
+  # volume_zscore 1,613 and the policy 1,930 — about twice the others, mostly
+  # in the last four bars of the session, where the clock helps it. Recorded,
+  # not tuned away: moving the cut on live bars would undo the pre-registration.
+  #
+  # It reads technical features (features.technical on for its own frame
+  # only) and the 47 bars before each scored hour, so a live hour gets the
+  # same full 48-bar window training did; the other detectors' frame is
+  # unchanged. model.pt is committed under models/live/ for the same reason
+  # as the policy, and sha256 is checked at load.
+  footprint:
+    - run: models/live/footprint-s46-pretrained
+      threshold: 1.6857165098190308
+      sha256: 29c82cb161d11d7e5083580a36e043a370ae5ee5b9f24ee63ff40b186d96e4d3
   # Live-period filings stored before 2026-10-07 took their acceptance time
   # from the submissions JSON, whose acceptanceDateTime drifted by the
   # Eastern offset (NKE 0000320187-26-000184: true 20:15:15Z, JSON now says

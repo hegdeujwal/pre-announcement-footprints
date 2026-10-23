@@ -133,6 +133,12 @@ def is_policy(detector) -> bool:
     return isinstance(detector, str) and detector.startswith("rl_policy")
 
 
+def is_model(detector) -> bool:
+    """Is this alert from FootprintNet? Its score is a logit, which can sit
+    near or below zero, so a multiple of its threshold means nothing either."""
+    return isinstance(detector, str) and detector.startswith("footprint_")
+
+
 def strength(score: float, threshold: float,
              detector: str | None = None) -> tuple[str, str, float]:
     """(band key, words, multiple-of-threshold) for one alert.
@@ -146,6 +152,8 @@ def strength(score: float, threshold: float,
     """
     if is_policy(detector):
         return "policy", "Policy flag", float("nan")
+    if is_model(detector):
+        return "policy", "Model flag", float("nan")
     if not threshold:
         return "marginal", "Marginal", float("nan")
     mult = score / threshold

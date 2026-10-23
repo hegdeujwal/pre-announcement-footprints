@@ -325,7 +325,8 @@ def alerts_today() -> None:
                    f"rule-detector alerts, {where}. A learned policy's alert "
                    f"is shown as *Policy flag* instead — its score is a "
                    f"probability pressed against 1.0, not a multiple of a "
-                   f"rule. Extreme ≥10×, Strong ≥4×, Elevated ≥2×. "
+                   f"rule — and FootprintNet's as *Model flag*, its score "
+                   f"being a logit. Extreme ≥10×, Strong ≥4×, Elevated ≥2×. "
                    f"Select a row above to open it.")
 
     # Rule 1 names four reasons. Two of them are not always available, and
@@ -360,7 +361,8 @@ def alerts_today() -> None:
                    "series is ours, not the market's: coverage widened from 400 "
                    "tickers to the full 1,500 on 2026-09-07, so flags per day "
                    "rises there by construction. A second, from 2026-09-25, is "
-                   "the learned policy joining the two rules."
+                   "the learned policy joining the two rules, and a third, "
+                   "from 2026-10-23, FootprintNet joining them."
                    + " Recorded data incidents — bad bars, not a busy "
                    "market: " + "; ".join(i["label"] for i in data.incidents())
                    + ".")
@@ -423,6 +425,8 @@ def ticker_detail() -> None:
     ui.stat(s[0], "Ticker", ticker, row["detector"])
     ui.stat(s[1], "Strength", ui.times(mult),
             f"{words} — {ui.times(mult)} threshold" if mult == mult else
+            f"{words} — FootprintNet's logit {row['score']:.2f}, cut "
+            f"{row['threshold']:.2f}" if ui.is_model(row["detector"]) else
             f"{words} — a learned policy's P(FLAG), not a multiple of a rule")
     ui.stat(s[2], "Flagged", dt.datetime.fromtimestamp(
         int(flagged), dt.timezone.utc).strftime("%d %b %H:%M"), ui.utc(flagged))
@@ -1285,7 +1289,8 @@ def _live_charts(df: pd.DataFrame, hours: int) -> None:
     if by_band.empty:
         ui.note("No graded new flags yet, so there is no rate to draw.")
         return
-    order = ["Marginal", "Elevated", "Strong", "Extreme", "Policy flag"]
+    order = ["Marginal", "Elevated", "Strong", "Extreme", "Policy flag",
+             "Model flag"]
     order = [o for o in order if o in set(by_band["group"])]
     left, right = st.columns(2)
     with left:
