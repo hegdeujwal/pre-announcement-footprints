@@ -67,6 +67,33 @@ collection **core label infrastructure from week 1**, not an optional channel.
 coming" scores 99.7%. The headline metric is precision at a fixed alert budget
 (2 alerts per stock per month), decided before the model was built.
 
+## What the study found
+
+Every number below is on **closing-hour windows only**: most filings land
+after the close, so a detector that knows nothing but the time of day scored
+6.7x on surprise filings until that comparison was fixed. Tables are in
+[`results/`](results/MANIFEST.md); the holdout is Aug 1 – Oct 17 2026, after
+the study ended, and every opening of it is recorded in
+`results/footprint-net/holdout/holdout_opened.json`.
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Does a deep model beat the classical detectors? | **On earnings filings, yes** — FootprintNet (a GRU over the last 48 bars) ~1.45x the correct alerts of volume z-score on the holdout, error bar above 1x. | `footprint-net/holdout/lift_ci.csv` |
+| Is there a timing footprint before **surprise** filings? | **No**, for any detector: within-stock AUC ~0.53. The lift that remains comes from picking filing-prone stocks, which a stock-only rule does better. | `footprint-net/holdout/within_stock_same_hour.csv` |
+| Does a footprint hide in one surprise item type? | **No.** Ten item types tested with a Holm correction; none on validation. On the holdout only Reg FD disclosures (7.01) passed, for 2 of 10 FootprintNet runs and no classical detector — not a finding. | `discovery/*/by_item.csv` |
+| Would more labelled filings help on surprise filings? | **No.** From 10% to 100% of the train filings, within-stock AUC stays 0.51–0.53, never above volume z-score's 0.535. Earnings gains flatten by 50%. | `discovery/val/learning_curve.csv` |
+| Does pre-earnings trading reveal the **result**? | **Its size, not its direction.** Unusual trading before earnings predicts a bigger move after, beyond what the stock's past earnings moves and volatility already say (partial Spearman 0.11–0.17 validation, 0.24–0.36 holdout, every run's interval above 0). The top fifth moves ~1.4x (validation) to ~2x (holdout) as much. Which way it moves is not shown: the pre-earnings drift matches the move's sign 51–63% of the time, with intervals reaching 50% for most runs. | `discovery/*/earnings_leak.csv` |
+
+The earnings-size result passed the rule fixed in `eval.discovery` before the
+holdout was opened (both splits, whole seed range); direction did not. It
+reads as the market anticipating a *big* surprise, not knowing which way —
+and options-implied volatility, which this project does not collect, is the
+control that would test that properly.
+
+Reproduce: `python -m src.baselines.footprint_train` (and `--learning-curve`),
+`python -m src.baselines.footprint_review`, then
+`python -m src.baselines.discovery_review [--split holdout --reason "..."]`.
+
 ## Repository layout
 
 ```

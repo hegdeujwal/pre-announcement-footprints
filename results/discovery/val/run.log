@@ -1,0 +1,226 @@
+  evalset: 250/1500 tickers, 247 episodes + 52,192 bars
+  evalset: 500/1500 tickers, 461 episodes + 104,964 bars
+  evalset: 750/1500 tickers, 703 episodes + 157,116 bars
+  evalset: 1000/1500 tickers, 950 episodes + 209,773 bars
+  evalset: 1250/1500 tickers, 1,201 episodes + 261,642 bars
+  evalset: 1500/1500 tickers, 1,452 episodes + 313,242 bars
+evalset: 1,452 positive episodes + 313,242 quiet bars = 314,694 windows, base rate 0.4614%
+  1,280 earnings events (848 material)
+  volume_zscore                        1s
+  cusum                                2s
+  footprint_pretrained[s42]           24s
+  footprint_scratch[s42]              26s
+  footprint_pretrained[s43]           25s
+  footprint_scratch[s43]              24s
+  footprint_pretrained[s44]           24s
+  footprint_scratch[s44]              23s
+  footprint_pretrained[s45]           24s
+  footprint_scratch[s45]              24s
+  footprint_pretrained[s46]           23s
+  footprint_scratch[s46]              26s
+  footprint_scratch_f10[s42]          25s
+  footprint_scratch_f25[s42]          29s
+  footprint_scratch_f50[s42]          24s
+  footprint_scratch_f75[s42]          25s
+  footprint_scratch_f10[s43]          26s
+  footprint_scratch_f25[s43]          25s
+  footprint_scratch_f50[s43]          26s
+  footprint_scratch_f75[s43]          27s
+  footprint_scratch_f10[s44]          25s
+  footprint_scratch_f25[s44]          32s
+  footprint_scratch_f50[s44]          28s
+  footprint_scratch_f75[s44]          27s
+  footprint_scratch_f10[s45]          25s
+  footprint_scratch_f25[s45]          26s
+  footprint_scratch_f50[s45]          28s
+  footprint_scratch_f75[s45]          31s
+  footprint_scratch_f10[s46]          26s
+  footprint_scratch_f25[s46]          26s
+  footprint_scratch_f50[s46]          27s
+  footprint_scratch_f75[s46]          27s
+scored in 828s
+
+-- earnings: does an unusual pre-earnings score predict the result? --
+                  detector  n_events  n_stocks  n_unusual  unusual_cut_pct  rho_size  rho_size_lo  rho_size_hi  rho_size_partial  rho_size_partial_lo  rho_size_partial_hi  rho_controls  rho_controls_lo  rho_controls_hi  hit_all  hit_all_lo  hit_all_hi  hit_unusual  hit_unusual_lo  hit_unusual_hi  hit_usual  hit_usual_lo  hit_usual_hi  size_ratio  size_ratio_lo  size_ratio_hi
+             volume_zscore       955       945        204            0.968     0.115        0.055        0.177             0.064                0.003                0.127         0.262            0.201            0.323    0.510       0.477       0.541        0.520           0.452           0.587      0.507         0.472         0.542       0.849          0.654          1.071
+                     cusum       955       945        231            0.966     0.101        0.039        0.161             0.070                0.010                0.132         0.262            0.201            0.323    0.510       0.477       0.541        0.541           0.479           0.606      0.500         0.463         0.535       1.124          0.949          1.309
+ footprint_pretrained[s42]       955       945        327            1.000     0.187        0.127        0.247             0.136                0.074                0.198         0.262            0.201            0.323    0.510       0.477       0.541        0.557           0.502           0.613      0.486         0.446         0.524       1.428          1.243          1.695
+    footprint_scratch[s42]       955       945        353            1.000     0.159        0.093        0.221             0.130                0.064                0.192         0.262            0.201            0.323    0.510       0.477       0.541        0.550           0.498           0.605      0.487         0.446         0.524       1.396          1.212          1.618
+ footprint_pretrained[s43]       955       945        302            1.000     0.197        0.135        0.258             0.146                0.082                0.208         0.262            0.201            0.323    0.510       0.477       0.541        0.550           0.494           0.606      0.492         0.452         0.529       1.373          1.207          1.630
+    footprint_scratch[s43]       955       945        334            1.000     0.191        0.125        0.252             0.143                0.078                0.205         0.262            0.201            0.323    0.510       0.477       0.541        0.548           0.494           0.604      0.490         0.449         0.529       1.412          1.227          1.664
+ footprint_pretrained[s44]       955       945        305            1.000     0.221        0.159        0.282             0.166                0.105                0.225         0.262            0.201            0.323    0.510       0.477       0.541        0.548           0.490           0.606      0.492         0.453         0.530       1.444          1.265          1.716
+    footprint_scratch[s44]       955       945        323            1.000     0.181        0.118        0.246             0.139                0.072                0.203         0.262            0.201            0.323    0.510       0.477       0.541        0.545           0.490           0.602      0.492         0.453         0.529       1.432          1.246          1.699
+ footprint_pretrained[s45]       955       945        336            1.000     0.174        0.111        0.235             0.130                0.067                0.193         0.262            0.201            0.323    0.510       0.477       0.541        0.554           0.502           0.610      0.486         0.447         0.527       1.388          1.197          1.647
+    footprint_scratch[s45]       955       945        337            1.000     0.198        0.136        0.261             0.159                0.096                0.220         0.262            0.201            0.323    0.510       0.477       0.541        0.555           0.501           0.608      0.485         0.446         0.525       1.450          1.254          1.714
+ footprint_pretrained[s46]       955       945        311            1.000     0.167        0.105        0.228             0.114                0.050                0.177         0.262            0.201            0.323    0.510       0.477       0.541        0.534           0.478           0.593      0.498         0.460         0.535       1.359          1.190          1.580
+    footprint_scratch[s46]       955       945        334            1.000     0.182        0.117        0.243             0.134                0.070                0.196         0.262            0.201            0.323    0.510       0.477       0.541        0.530           0.475           0.585      0.499         0.461         0.538       1.376          1.192          1.635
+footprint_scratch_f10[s42]       955       945        285            1.000     0.153        0.087        0.214             0.123                0.060                0.184         0.262            0.201            0.323    0.510       0.477       0.541        0.516           0.458           0.574      0.507         0.470         0.545       1.267          1.118          1.488
+footprint_scratch_f25[s42]       955       945        279            1.000     0.159        0.096        0.221             0.110                0.047                0.172         0.262            0.201            0.323    0.510       0.477       0.541        0.530           0.472           0.591      0.501         0.465         0.538       1.323          1.175          1.537
+footprint_scratch_f50[s42]       955       945        301            1.000     0.149        0.085        0.211             0.103                0.039                0.164         0.262            0.201            0.323    0.510       0.477       0.541        0.548           0.492           0.605      0.492         0.455         0.530       1.356          1.189          1.573
+footprint_scratch_f75[s42]       955       945        316            1.000     0.174        0.109        0.236             0.131                0.067                0.192         0.262            0.201            0.323    0.510       0.477       0.541        0.547           0.492           0.605      0.491         0.452         0.530       1.364          1.201          1.611
+footprint_scratch_f10[s43]       955       945        272            1.000     0.066        0.003        0.128             0.035               -0.028                0.099         0.262            0.201            0.323    0.510       0.477       0.541        0.537           0.476           0.597      0.499         0.461         0.535       1.175          1.005          1.359
+footprint_scratch_f25[s43]       955       945        267            1.000     0.110        0.048        0.173             0.062                0.001                0.125         0.262            0.201            0.323    0.510       0.477       0.541        0.521           0.459           0.581      0.506         0.469         0.542       1.194          1.054          1.417
+footprint_scratch_f50[s43]       955       945        312            1.000     0.198        0.136        0.260             0.150                0.088                0.212         0.262            0.201            0.323    0.510       0.477       0.541        0.548           0.492           0.604      0.491         0.453         0.530       1.372          1.207          1.631
+footprint_scratch_f75[s43]       955       945        314            1.000     0.212        0.148        0.273             0.167                0.105                0.229         0.262            0.201            0.323    0.510       0.477       0.541        0.529           0.474           0.587      0.501         0.461         0.538       1.475          1.281          1.769
+footprint_scratch_f10[s44]       955       945        295            1.000     0.102        0.039        0.164             0.063                0.000                0.126         0.262            0.201            0.323    0.510       0.477       0.541        0.525           0.467           0.585      0.503         0.465         0.540       1.201          1.027          1.452
+footprint_scratch_f25[s44]       955       945        303            1.000     0.141        0.080        0.201             0.096                0.033                0.157         0.262            0.201            0.323    0.510       0.477       0.541        0.528           0.470           0.587      0.502         0.462         0.538       1.289          1.135          1.512
+footprint_scratch_f50[s44]       955       945        329            1.000     0.175        0.112        0.236             0.126                0.064                0.186         0.262            0.201            0.323    0.510       0.477       0.541        0.544           0.489           0.603      0.492         0.452         0.529       1.345          1.177          1.576
+footprint_scratch_f75[s44]       955       945        325            1.000     0.183        0.122        0.244             0.137                0.073                0.199         0.262            0.201            0.323    0.510       0.477       0.541        0.545           0.491           0.601      0.492         0.452         0.530       1.386          1.220          1.640
+footprint_scratch_f10[s45]       955       945        296            1.000     0.178        0.114        0.239             0.130                0.063                0.193         0.262            0.201            0.323    0.510       0.477       0.541        0.520           0.462           0.581      0.505         0.467         0.543       1.384          1.207          1.662
+footprint_scratch_f25[s45]       955       945        308            1.000     0.165        0.103        0.226             0.113                0.048                0.174         0.262            0.201            0.323    0.510       0.477       0.541        0.532           0.476           0.591      0.499         0.461         0.537       1.452          1.260          1.721
+footprint_scratch_f50[s45]       955       945        330            1.000     0.170        0.108        0.232             0.130                0.068                0.191         0.262            0.201            0.323    0.510       0.477       0.541        0.518           0.463           0.576      0.506         0.467         0.543       1.388          1.200          1.673
+footprint_scratch_f75[s45]       955       945        328            1.000     0.160        0.098        0.220             0.118                0.056                0.179         0.262            0.201            0.323    0.510       0.477       0.541        0.530           0.475           0.587      0.499         0.462         0.538       1.384          1.207          1.609
+footprint_scratch_f10[s46]       955       945        221            1.000     0.051       -0.011        0.114             0.015               -0.048                0.076         0.262            0.201            0.323    0.510       0.477       0.541        0.516           0.447           0.582      0.508         0.472         0.544       1.138          0.993          1.320
+footprint_scratch_f25[s46]       955       945        294            1.000     0.181        0.117        0.242             0.137                0.075                0.198         0.262            0.201            0.323    0.510       0.477       0.541        0.544           0.485           0.602      0.495         0.455         0.532       1.377          1.211          1.663
+footprint_scratch_f50[s46]       955       945        316            1.000     0.170        0.108        0.232             0.134                0.070                0.195         0.262            0.201            0.323    0.510       0.477       0.541        0.522           0.465           0.580      0.504         0.466         0.542       1.388          1.213          1.639
+footprint_scratch_f75[s46]       955       945        333            1.000     0.201        0.139        0.262             0.158                0.095                0.220         0.262            0.201            0.323    0.510       0.477       0.541        0.538           0.483           0.594      0.495         0.456         0.535       1.379          1.208          1.646
+
+-- surprise filings by item type, closing-bar windows --
+                 detector            item  n_events  tested   auc  auc_lo  auc_hi     p  n_stocks  lift  p_holm footprint
+            volume_zscore all unscheduled       545   False 0.535   0.505   0.565 0.027   387.000 1.195     NaN       NaN
+            volume_zscore            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+            volume_zscore            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+            volume_zscore            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+            volume_zscore            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+            volume_zscore            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+            volume_zscore            1.01        92    True 0.543   0.465   0.620 0.256    85.000 1.523   1.000     False
+            volume_zscore            5.02       155    True 0.486   0.431   0.539 0.572   144.000 1.321   1.000     False
+            volume_zscore            8.01       205    True 0.527   0.477   0.575 0.304   148.000 1.157   1.000     False
+            volume_zscore            2.03        54    True 0.487   0.389   0.579 0.799    51.000 1.099   1.000     False
+            volume_zscore            7.01       204    True 0.519   0.475   0.565 0.403   168.000 1.137   1.000     False
+                    cusum all unscheduled       545   False 0.533   0.513   0.554 0.001   387.000 1.195     NaN       NaN
+                    cusum            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+                    cusum            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+                    cusum            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+                    cusum            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+                    cusum            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+                    cusum            1.01        92    True 0.559   0.511   0.608 0.013    85.000 1.523   0.065     False
+                    cusum            5.02       155    True 0.521   0.482   0.561 0.277   144.000 1.321   0.554     False
+                    cusum            8.01       205    True 0.540   0.506   0.573 0.020   148.000 1.131   0.080     False
+                    cusum            2.03        54    True 0.503   0.446   0.563 0.940    51.000 1.099   0.940     False
+                    cusum            7.01       204    True 0.528   0.495   0.561 0.086   168.000 1.163   0.258     False
+footprint_pretrained[s42] all unscheduled       545   False 0.533   0.503   0.563 0.029   387.000 1.718     NaN       NaN
+footprint_pretrained[s42]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s42]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s42]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s42]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s42]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s42]            1.01        92    True 0.563   0.486   0.639 0.098    85.000 1.965   0.490     False
+footprint_pretrained[s42]            5.02       155    True 0.491   0.439   0.543 0.732   144.000 1.450   1.000     False
+footprint_pretrained[s42]            8.01       205    True 0.518   0.469   0.566 0.505   148.000 1.814   1.000     False
+footprint_pretrained[s42]            2.03        54    True 0.527   0.432   0.621 0.590    51.000 1.423   1.000     False
+footprint_pretrained[s42]            7.01       204    True 0.530   0.486   0.575 0.182   168.000 1.664   0.728     False
+   footprint_scratch[s42] all unscheduled       545   False 0.530   0.501   0.561 0.045   387.000 1.833     NaN       NaN
+   footprint_scratch[s42]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s42]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s42]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s42]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s42]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s42]            1.01        92    True 0.561   0.493   0.633 0.092    85.000 2.212   0.460     False
+   footprint_scratch[s42]            5.02       155    True 0.492   0.442   0.545 0.767   144.000 1.385   1.000     False
+   footprint_scratch[s42]            8.01       205    True 0.510   0.461   0.559 0.691   148.000 1.795   1.000     False
+   footprint_scratch[s42]            2.03        54    True 0.530   0.442   0.619 0.546    51.000 1.836   1.000     False
+   footprint_scratch[s42]            7.01       204    True 0.536   0.493   0.577 0.092   168.000 1.857   0.460     False
+footprint_pretrained[s43] all unscheduled       545   False 0.537   0.509   0.568 0.012   387.000 1.976     NaN       NaN
+footprint_pretrained[s43]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s43]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s43]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s43]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s43]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s43]            1.01        92    True 0.572   0.500   0.646 0.052    85.000 2.267   0.260     False
+footprint_pretrained[s43]            5.02       155    True 0.497   0.444   0.551 0.906   144.000 1.630   1.000     False
+footprint_pretrained[s43]            8.01       205    True 0.535   0.489   0.583 0.152   148.000 2.190   0.608     False
+footprint_pretrained[s43]            2.03        54    True 0.530   0.433   0.620 0.532    51.000 1.629   1.000     False
+footprint_pretrained[s43]            7.01       204    True 0.518   0.474   0.561 0.444   168.000 1.801   1.000     False
+   footprint_scratch[s43] all unscheduled       545   False 0.537   0.507   0.567 0.021   387.000 1.813     NaN       NaN
+   footprint_scratch[s43]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s43]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s43]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s43]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s43]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s43]            1.01        92    True 0.566   0.493   0.644 0.077    85.000 2.152   0.385     False
+   footprint_scratch[s43]            5.02       155    True 0.494   0.441   0.548 0.804   144.000 1.385   1.000     False
+   footprint_scratch[s43]            8.01       205    True 0.533   0.484   0.583 0.195   148.000 1.954   0.620     False
+   footprint_scratch[s43]            2.03        54    True 0.525   0.429   0.619 0.604    51.000 1.734   1.000     False
+   footprint_scratch[s43]            7.01       204    True 0.531   0.486   0.574 0.155   168.000 1.617   0.620     False
+footprint_pretrained[s44] all unscheduled       545   False 0.548   0.519   0.578 0.001   387.000 2.175     NaN       NaN
+footprint_pretrained[s44]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s44]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s44]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s44]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s44]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s44]            1.01        92    True 0.572   0.497   0.650 0.057    85.000 2.629   0.285     False
+footprint_pretrained[s44]            5.02       155    True 0.498   0.444   0.552 0.919   144.000 1.668   1.000     False
+footprint_pretrained[s44]            8.01       205    True 0.536   0.491   0.583 0.115   148.000 2.432   0.345     False
+footprint_pretrained[s44]            2.03        54    True 0.531   0.433   0.622 0.522    51.000 1.836   1.000     False
+footprint_pretrained[s44]            7.01       204    True 0.545   0.498   0.589 0.057   168.000 2.151   0.285     False
+   footprint_scratch[s44] all unscheduled       545   False 0.532   0.502   0.563 0.039   387.000 1.860     NaN       NaN
+   footprint_scratch[s44]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s44]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s44]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s44]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s44]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s44]            1.01        92    True 0.560   0.490   0.637 0.088    85.000 2.447   0.440     False
+   footprint_scratch[s44]            5.02       155    True 0.489   0.440   0.542 0.659   144.000 1.313   1.000     False
+   footprint_scratch[s44]            8.01       205    True 0.523   0.475   0.571 0.355   148.000 2.058   1.000     False
+   footprint_scratch[s44]            2.03        54    True 0.505   0.408   0.600 0.901    51.000 1.833   1.000     False
+   footprint_scratch[s44]            7.01       204    True 0.534   0.491   0.578 0.132   168.000 1.695   0.528     False
+footprint_pretrained[s45] all unscheduled       545   False 0.535   0.506   0.565 0.018   387.000 1.708     NaN       NaN
+footprint_pretrained[s45]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s45]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s45]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s45]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s45]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s45]            1.01        92    True 0.563   0.487   0.637 0.093    85.000 2.025   0.465     False
+footprint_pretrained[s45]            5.02       155    True 0.480   0.428   0.534 0.422   144.000 1.133   0.844     False
+footprint_pretrained[s45]            8.01       205    True 0.538   0.491   0.588 0.108   148.000 1.973   0.465     False
+footprint_pretrained[s45]            2.03        54    True 0.525   0.429   0.613 0.615    51.000 1.321   0.844     False
+footprint_pretrained[s45]            7.01       204    True 0.532   0.490   0.576 0.162   168.000 1.664   0.486     False
+   footprint_scratch[s45] all unscheduled       545   False 0.531   0.501   0.563 0.046   387.000 1.853     NaN       NaN
+   footprint_scratch[s45]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s45]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s45]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s45]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s45]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s45]            1.01        92    True 0.564   0.491   0.641 0.080    85.000 1.974   0.320     False
+   footprint_scratch[s45]            5.02       155    True 0.487   0.435   0.542 0.623   144.000 1.315   1.000     False
+   footprint_scratch[s45]            8.01       205    True 0.513   0.463   0.564 0.634   148.000 2.141   1.000     False
+   footprint_scratch[s45]            2.03        54    True 0.520   0.428   0.614 0.693    51.000 1.531   1.000     False
+   footprint_scratch[s45]            7.01       204    True 0.544   0.502   0.584 0.045   168.000 1.805   0.225     False
+footprint_pretrained[s46] all unscheduled       545   False 0.542   0.514   0.572 0.004   387.000 1.776     NaN       NaN
+footprint_pretrained[s46]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s46]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s46]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s46]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s46]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+footprint_pretrained[s46]            1.01        92    True 0.562   0.488   0.640 0.098    85.000 2.143   0.415     False
+footprint_pretrained[s46]            5.02       155    True 0.499   0.446   0.553 0.953   144.000 1.520   1.000     False
+footprint_pretrained[s46]            8.01       205    True 0.528   0.479   0.575 0.270   148.000 1.841   0.810     False
+footprint_pretrained[s46]            2.03        54    True 0.522   0.426   0.615 0.655    51.000 1.727   1.000     False
+footprint_pretrained[s46]            7.01       204    True 0.540   0.496   0.584 0.083   168.000 1.690   0.415     False
+   footprint_scratch[s46] all unscheduled       545   False 0.529   0.499   0.561 0.058   387.000 1.929     NaN       NaN
+   footprint_scratch[s46]            1.03         0   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s46]            2.01         7   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s46]            4.01         3   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s46]            4.02         1   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s46]            5.01         2   False   NaN     NaN     NaN   NaN       NaN   NaN     NaN       NaN
+   footprint_scratch[s46]            1.01        92    True 0.561   0.486   0.636 0.105    85.000 2.210   0.525     False
+   footprint_scratch[s46]            5.02       155    True 0.485   0.433   0.540 0.579   144.000 1.420   1.000     False
+   footprint_scratch[s46]            8.01       205    True 0.523   0.472   0.572 0.398   148.000 2.112   1.000     False
+   footprint_scratch[s46]            2.03        54    True 0.530   0.436   0.619 0.541    51.000 1.631   1.000     False
+   footprint_scratch[s46]            7.01       204    True 0.523   0.481   0.565 0.316   168.000 1.749   1.000     False
+
+-- learning curve (scratch, validation, closing-bar windows) --
+      slice  fraction  lift_mean  lift_min  lift_max  auc_mean  auc_min  auc_max  n_seeds  volume_zscore_lift  volume_zscore_auc
+  scheduled     0.100      3.658     3.312     3.823     0.846    0.808    0.861        5               3.068              0.813
+  scheduled     0.250      3.752     3.667     3.891     0.854    0.849    0.863        5               3.068              0.813
+  scheduled     0.500      3.956     3.813     4.085     0.866    0.850    0.875        5               3.068              0.813
+  scheduled     0.750      3.965     3.919     4.028     0.868    0.862    0.873        5               3.068              0.813
+  scheduled     1.000      3.989     3.913     4.045     0.870    0.864    0.879        5               3.068              0.813
+unscheduled     0.100      1.476     1.388     1.556     0.515    0.503    0.523        5               1.195              0.535
+unscheduled     0.250      1.674     1.596     1.785     0.525    0.515    0.535        5               1.195              0.535
+unscheduled     0.500      1.745     1.674     1.912     0.526    0.519    0.538        5               1.195              0.535
+unscheduled     0.750      1.803     1.720     1.912     0.525    0.518    0.540        5               1.195              0.535
+unscheduled     1.000      1.858     1.813     1.929     0.532    0.529    0.537        5               1.195              0.535
+
+wrote /home/ujwal/Pros/pre-announcement-footprints/data/processed/discovery/val

@@ -52,6 +52,16 @@ results_export:
   - footprint-net/holdout/holdout_opened.json
   # Past look-alikes beside each live alert (src.live.similar_cases).
   - similar-cases/similar_cases.csv
+  # Discovery review (2026-10-23): does pre-earnings trading predict the
+  # result, do surprise filings leak by item type, would more filings help.
+  # Written by src.baselines.discovery_review; rules in eval.discovery.
+  - discovery/val/earnings_leak.csv
+  - discovery/val/by_item.csv
+  - discovery/val/learning_curve.csv
+  - discovery/val/run.log
+  - discovery/holdout/earnings_leak.csv
+  - discovery/holdout/by_item.csv
+  - discovery/holdout/run.log
 
 http:
   # SEC requires a descriptive User-Agent with a contact address, and caps

@@ -28,5 +28,12 @@ Copied from `/home/ujwal/Pros/pre-announcement-footprints/data/processed/` by `s
 | `footprint-net/holdout/comparison_same_hour.csv` | 169,908 | `22c9cecf2a48256609cd934ab70ff2673e4d8314b3872e34b92b3cbf83100be9` |
 | `footprint-net/holdout/within_stock_same_hour.csv` | 10,746 | `9d11505ff34e4ae292744b3e52acbc7a3e738beba65b5c8b39464913e5f376d9` |
 | `footprint-net/holdout/lift_ci.csv` | 10,836 | `b9ce54181452e2b7da5e32dd78f9409b9222bde901942bc2dcfeb0e821d5f85f` |
-| `footprint-net/holdout/holdout_opened.json` | 855 | `7a67502ff9676acf54ef60b954dfad09739eabe0aae3bb523c3acc4937e423e5` |
+| `footprint-net/holdout/holdout_opened.json` | 1,214 | `192746e464e1ce28b63404fe8cf8b4796ed5c0627ba7e9e329705c75a210745a` |
 | `similar-cases/similar_cases.csv` | 1,963,987 | `03a49d7a16390b94a8a1096979d3e9b32cef7dee226f6b2be7cd41752226ba94` |
+| `discovery/val/earnings_leak.csv` | 14,593 | `a93e0059451687123c0b65b9d3c113f34e5e2ec0a54ba8551586a3994cf8f766` |
+| `discovery/val/by_item.csv` | 12,509 | `41fec27ac1cceebd19c2e072b51b3c3337e103210ca9618750f68b0c0aa220c1` |
+| `discovery/val/learning_curve.csv` | 4,274 | `4641160c993b69803eb897f0ad5249bfce724e91112552eb89b4a11885912ae0` |
+| `discovery/val/run.log` | 32,232 | `b4f47532e7d20c376eee362302a45797de909aeb5c36d8a989e08550894fe36a` |
+| `discovery/holdout/earnings_leak.csv` | 5,577 | `2401b200538d894db5bd5545650626e43cbde86e58e69e3f1f4790bdf75b7eec` |
+| `discovery/holdout/by_item.csv` | 12,389 | `783f192318b238156cf9602cb754a6617795cae4e8c5b97ee7e418611843ee94` |
+| `discovery/holdout/run.log` | 22,424 | `1cd4a9c0ce333d4f735efcd1565cd1ba0a2a25ee5e56967f92b5edeb49607d19` |
