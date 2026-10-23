@@ -1163,6 +1163,39 @@ eval:
     seed: 0
     ci: 0.95
     references: [volume_zscore, cusum, ticker_prior]
+  # Discovery questions (src/baselines/discovery_review.py + src/eval/
+  # earnings_leak.py, by_item.py, learning_curve.py; added 2026-10-23). Every
+  # value fixed BEFORE any number was read, and the decision rule with them:
+  #   earnings leak - an earnings DATE is public, its RESULT is not. Does a
+  #     pre-earnings score that is unusual FOR THAT STOCK predict the size of
+  #     the move after (partial Spearman, controlling for the stock's own past
+  #     earnings moves and its volatility), or does the price drift before it
+  #     call the direction more often among the unusual ones? "Supported"
+  #     only if the 95% interval clears 0 (size) or 50% (direction) on BOTH
+  #     validation and the holdout, for the detector's whole seed range.
+  #   by item - the unscheduled slice mixes ten item types; a footprint in one
+  #     could hide in the mix. Within-stock AUC per item on closing-bar
+  #     windows; a type "shows a footprint" only if it clears 0.5 after a Holm
+  #     correction over the types tested.
+  # pre_drift_bars   - one session (7 bars), where the event study puts the
+  #                    footprint; the benchmark-relative return over it
+  # min_quiet_closing - closing bars a stock needs for its own "normal"
+  # normal_gap_days  - quiet bars this close before ANY earnings of the stock
+  #                    are left out of its normal: they are the build-up itself
+  # unusual_top_share - "unusual" = top 20% of the split's earnings by score
+  #                    percentile within the stock
+  # min_item_events  - item types with fewer closing-bar positives are listed,
+  #                    not tested
+  discovery:
+    pre_drift_bars: 7
+    min_quiet_closing: 20
+    normal_gap_days: 7
+    unusual_top_share: 0.2
+    min_item_events: 15
+    bootstrap: 2000
+    seed: 0
+    ci: 0.95
+    out: discovery
   # Item guesses from the analog memory (src/eval/analog_items.py, added
   # 2026-10-18): does the nearest past case name the right 8-K item, against
   # bar-blind guesses? The bootstrap resamples EVENTS. `seed` also drives the
