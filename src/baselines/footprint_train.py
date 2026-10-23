@@ -25,9 +25,20 @@ and the stopping rule is inner-split ROC AUC.
 `init="scratch"` starts from random weights with the same seed. The gap
 between the two is the test of whether pre-training helps.
 
+Learning curve
+--------------
+`fraction` < 1 fine-tunes on that share of the fitting period's filings only,
+each with its usual quota of clock-matched negatives; the inner split used for
+stopping is untouched. The shares are nested — one fixed shuffle per seed, the
+first `fraction` of it kept — so a 50% run holds every filing of the 25% run.
+If validation keeps improving as the share grows, more filings would help; if
+it is flat, the bottleneck is not the amount of labelled data
+(`src.eval.learning_curve`).
+
 Usage:
   python -m src.baselines.footprint_train                 # every seed, all stages
   python -m src.baselines.footprint_train --seeds 42 --stage pretrain
+  python -m src.baselines.footprint_train --learning-curve     # scratch, every share
 """
 
 from __future__ import annotations
@@ -117,10 +128,13 @@ class Prepared:
 
 
 def matched_negatives(data: Prepared, region: np.ndarray, ratio: int,
-                      rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+                      rng: np.random.Generator,
+                      pos: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """(positive rows, negative rows) in `region`, negatives matched on
-    bar-of-session to the positives' exact mix."""
-    pos = np.flatnonzero(region & data.is_final_pos)
+    bar-of-session to the positives' exact mix. `pos` overrides which
+    positives are used (a learning-curve share)."""
+    if pos is None:
+        pos = np.flatnonzero(region & data.is_final_pos)
     neg = []
     for b in np.unique(data.bar_of_session[pos]):
         want = ratio * int((data.bar_of_session[pos] == b).sum())
@@ -146,6 +160,24 @@ def training_frame(cfg: dict, conn, refresh: bool = False) -> pd.DataFrame:
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(path, index=False)
     return frame
+
+
+def share_of_positives(data: Prepared, fraction: float, seed: int) -> np.ndarray:
+    """The first `fraction` of one fixed shuffle of the fitting filings, so
+    shares are nested. Its own generator: the share never moves the training
+    draws that follow it."""
+    if not 0 < fraction <= 1:
+        raise ValueError(f"fraction must be in (0, 1], got {fraction}")
+    pos = np.flatnonzero(data.fit & data.is_final_pos)
+    order = np.random.default_rng(seed).permutation(len(pos))
+    keep = max(1, int(round(fraction * len(pos))))
+    return np.sort(pos[order[:keep]])
+
+
+def run_name(seed: int, init: str, fraction: float = 1.0) -> str:
+    """`s42-scratch`, or `s42-scratch-f25` for a learning-curve share."""
+    base = f"s{seed}-{init}"
+    return base if fraction == 1 else f"{base}-f{round(fraction * 100):d}"
 
 
 def inner_cutoff(cfg: dict, conn) -> int:
@@ -216,7 +248,7 @@ def pretrain(data: Prepared, cfg: dict, seed: int, run_dir: Path,
 
 
 def finetune(data: Prepared, cfg: dict, seed: int, run_dir: Path,
-             init_dir: Path | None, log=print) -> dict:
+             init_dir: Path | None, log=print, fraction: float = 1.0) -> dict:
     import torch
     from sklearn.metrics import roc_auc_score
     k = F.knobs(cfg)
@@ -228,7 +260,8 @@ def finetune(data: Prepared, cfg: dict, seed: int, run_dir: Path,
         pre, _ = F.load_run(init_dir, cfg)
         model.load_state_dict(pre.state_dict())
     ratio = int(f["negatives_per_positive"])
-    pos, neg = matched_negatives(data, data.fit, ratio, rng)
+    share = None if fraction == 1 else share_of_positives(data, fraction, seed)
+    pos, neg = matched_negatives(data, data.fit, ratio, rng, pos=share)
     ipos, ineg = matched_negatives(data, data.inner, ratio, rng)
     ends = np.concatenate([pos, neg])
     labels = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))]).astype("float32")
@@ -271,6 +304,7 @@ def finetune(data: Prepared, cfg: dict, seed: int, run_dir: Path,
                 break
     model.load_state_dict(best_state)
     extra = {"best_inner_auc": best, "n_pos": int(len(pos)), "n_neg": int(len(neg)),
+             "fraction": fraction,
              "n_inner_pos": int(len(ipos)), "n_inner_neg": int(len(ineg))}
     return F.save_run(run_dir, model, _manifest(
         cfg, data, seed, "finetune", "pretrained" if init_dir else "scratch",
@@ -300,6 +334,9 @@ def main() -> None:
     ap.add_argument("--stage", choices=["pretrain", "finetune", "all"], default="all")
     ap.add_argument("--refresh-frame", action="store_true",
                     help="rebuild the cached train-split frame")
+    ap.add_argument("--learning-curve", action="store_true",
+                    help="fine-tune from scratch on every footprint_net."
+                         "learning_curve.fractions share instead")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -314,6 +351,18 @@ def main() -> None:
     del frame
     print(f"  {int(data.real.sum()):,} bars, {int(data.is_final_pos.sum()):,} filings, "
           f"{int(data.inner.sum()):,} inner-split bars ({time.time() - started:.0f}s)")
+    if args.learning_curve:
+        lc = k["learning_curve"]
+        for seed in seeds:
+            for fraction in lc["fractions"]:
+                run_dir = runs / run_name(seed, lc["init"], fraction)
+                if (run_dir / "manifest.json").exists():
+                    print(f"  {run_dir.name} exists, skipped")
+                    continue
+                init = runs / f"s{seed}-pretrain" if lc["init"] == "pretrained" else None
+                finetune(data, cfg, seed, run_dir, init, fraction=fraction)
+        print(f"done ({time.time() - started:.0f}s)")
+        return
     for seed in seeds:
         pre_dir = runs / f"s{seed}-pretrain"
         if args.stage in ("pretrain", "all"):

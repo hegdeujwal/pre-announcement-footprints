@@ -183,3 +183,30 @@ def test_tampered_weights_and_moved_channels_are_refused(cfg, trained):
     (runs / "ft" / "model.pt").write_bytes(b"tampered")
     with pytest.raises(ValueError, match="checksum"):
         F.load_run(runs / "ft", cfg)
+
+
+# -- learning curve -------------------------------------------------------------
+
+def test_learning_curve_shares_are_nested_and_sized(cfg):
+    data = T.Prepared(frame(cfg), cfg, ALL_FIT)
+    n = int((data.fit & data.is_final_pos).sum())
+    quarter, half = (T.share_of_positives(data, f, 7) for f in (0.25, 0.5))
+    assert len(quarter) == round(0.25 * n) and len(half) == round(0.5 * n)
+    assert set(quarter) <= set(half)
+    assert data.is_final_pos[half].all()
+    np.testing.assert_array_equal(T.share_of_positives(data, 1.0, 7),
+                                  np.flatnonzero(data.fit & data.is_final_pos))
+    with pytest.raises(ValueError, match="fraction"):
+        T.share_of_positives(data, 0, 7)
+
+
+def test_a_share_run_uses_only_its_filings_with_their_negatives(cfg, tmp_path):
+    f = frame(cfg)
+    data = T.Prepared(f, cfg, int(np.quantile(f["ts_utc"].astype("int64"), 0.75)))
+    m = T.finetune(data, cfg, 0, tmp_path / "half", None, log=lambda *_: None,
+                   fraction=0.5)
+    full = int((data.fit & data.is_final_pos).sum())
+    assert m["fraction"] == 0.5 and m["n_pos"] == round(0.5 * full)
+    assert m["n_neg"] == 3 * m["n_pos"]
+    assert T.run_name(42, "scratch", 0.25) == "s42-scratch-f25"
+    assert T.run_name(42, "scratch") == "s42-scratch"

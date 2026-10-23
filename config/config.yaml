@@ -821,6 +821,14 @@ baselines:
       patience: 6
     threads: 8
     runs_dir: "data/runs/footprint-net"
+    # Learning curve (added 2026-10-23): would more labelled filings help?
+    # Stage 2 re-run on nested shares of the TRAIN filings, every seed; the
+    # 100% point is the existing `s<seed>-scratch` run. From scratch because
+    # pre-training moved nothing (holdout, 2026-10-18) and the curve should
+    # isolate the labelled data. Scored on validation only.
+    learning_curve:
+      fractions: [0.1, 0.25, 0.5, 0.75]
+      init: scratch
   analog:
     # Analog memory (src/baselines/analog.py, added 2026-10-18 on the mentor's
     # "remember each pre-filing pattern, find it again in other companies").
