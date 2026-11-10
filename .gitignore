@@ -56,3 +56,6 @@ tensorboard/
 out.csv
 /*.csv
 !live-log/*.csv
+
+# local project-report drafts (docx/pdf), not part of the code
+report/
